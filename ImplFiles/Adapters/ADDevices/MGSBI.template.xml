@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="SqlServer" Name="ADDevices" Template="Custom Import" Enabled="True" 
+    	ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog={DBNAME};Data Source={SQLSERVER}"
+    	Query="SELECT * FROM [dbo].[ADDevices]"
+    	TimeOut="0" 
+    	TraceActions="created,updated,rejected" 
+    	TraceFields="[ComputerName]"
+     >
+      <Log Name="NewLog" Output="file" Loglevel="debug" Filename="{LOGDIR}\ADDevices_[DATE]_[TIME].log" />
+    	
+      <Object Type="ComplianceDomain" Name="Domain" Update="False" Create="True" OutputField="Domain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="Domain" UseForMatching="True" />
+      </Object>
+      
+      <Object Type="Computer" Name="Computer" Update="False" Create="False" OutputField="Computer_ID">
+        <Property Type="computername" Name="Computer Name" Update="Never" ValueType="Field Value" Value="ComputerName" UseForMatching="True" Length="256" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Never" ValueType="Field Value" Value="Domain_ID" UseForMatching="True" DataType="Integer" />
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

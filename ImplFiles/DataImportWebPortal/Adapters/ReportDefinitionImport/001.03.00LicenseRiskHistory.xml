@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="001.03.00 License Risk History" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>SQL view [CustomViewLicenseRiskHistory] that reports the history of top license risks by month</Description>
+    <FolderName>Governance Reports (SQL)</FolderName>
+    <CreationDate>15/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT 
+  [SoftwareLicenseID]
+  ,[Year]
+  ,[Month]
+  ,[Name]
+  ,[Version]
+  ,[Edition]
+  ,[PublisherName]
+  ,[ProductName]
+  ,[LicenseType]
+  ,[ComplianceStatus]
+  ,[Purchased]
+  ,[Consumed]
+  ,[Used]
+  ,[ShortfallAvailability]
+  ,[UnitPrice]
+  ,[ChargeBackPrice]
+  ,[ConsumedValue]
+  ,[TrueUpCost]
+  ,[OverStockCost]
+  ,[RiskValue]
+  ,[RiskValueDelta]  
+  ,[RiskType]
+  ,[RiskRating]
+  ,[RiskRank]
+  ,[RiskRankDelta]  
+  ,[RiskStatus]
+  ,[DateStamp]
+FROM [dbo].[CustomViewLicenseRiskHistory]
+ORDER BY [PublisherName], [SoftwareLicenseID], [Year] desc, [Month] desc
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="UQCorpUnits" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\Crayon\ImplFiles\DataImportWebPortal\Adapters\UQCorpUnits\UQCorpUnits.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+    	Query="select * from [CorpUnits$]"
+      >
+      <Object Type="CorporateUnit" Name="Corporate Unit" Update="True" Create="True" OutputField="CorporateUnit_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Flexnet Corp Unit" UseForMatching="True" Length="128" RegexSplit="/" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CorporateUnit_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+    </Import>
+  </Imports>
+</root>

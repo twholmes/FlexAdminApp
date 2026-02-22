@@ -1,0 +1,188 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="121" Exclude="" Action="add" FolderID="">
+    <SearchName>Installed Applications</SearchName>
+    <Description>Installed applications to Active Inventory Devices.</Description>
+    <FolderName>License Compliance/Software Licensing</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate software titles that user is allowed access
+	CREATE TABLE #SoftwareTitleAllowed (SoftwareTitleID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'list')) = 1
+	BEGIN
+			INSERT  #SoftwareTitleAllowed SELECT SoftwareTitleID FROM SoftwareTitle
+	END
+
+-- Pre-calculate installed software that user is allowed access
+	CREATE TABLE #InstalledSoftwareAllowedComputer (ComplianceComputerID int PRIMARY KEY)
+
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'read')) = 1
+	BEGIN
+		INSERT	#InstalledSoftwareAllowedComputer
+		SELECT	ComplianceComputerID
+		FROM	TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+	END
+
+-- Pre-calculate computers that user is allowed access
+	CREATE TABLE #ComplianceComputerAllowed (ComplianceComputerID int PRIMARY KEY)
+	INSERT  #ComplianceComputerAllowed SELECT * FROM TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate installed software that match filter
+	CREATE TABLE #R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareFilter (InstalledSoftwareID int PRIMARY KEY)
+	INSERT  #R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareFilter
+	SELECT  DISTINCT InstalledSoftware.InstalledSoftwareID
+	FROM    InstalledSoftware
+			INNER JOIN #InstalledSoftwareAllowedComputer AS isac ON isac.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+			LEFT OUTER JOIN dbo.ComplianceComputer ON ComplianceComputer.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+        -- Link from InstalledSoftware to Computer
+        	LEFT OUTER JOIN #ComplianceComputerAllowed AS R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_allowed ON R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_allowed.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+        	LEFT OUTER JOIN ComplianceComputer AS R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputer ON R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputer.ComplianceComputerID = R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_allowed.ComplianceComputerID
+        LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N AS R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputerStatusI18N ON R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputerStatusI18N.ComplianceComputerStatusID = R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputer.ComplianceComputerStatusID
+	WHERE   (ComplianceComputer.ComputerName <> N'' AND ComplianceComputer.ComputerName IS NOT NULL) AND
+        (R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComplianceComputer.ComplianceComputerStatusID = 1)
+
+-- Pre-calculate software titles that match filter
+	CREATE TABLE #SoftwareTitleFilter (SoftwareTitleID int PRIMARY KEY)
+	INSERT  #SoftwareTitleFilter
+	SELECT  DISTINCT SoftwareTitle.SoftwareTitleID
+	FROM    SoftwareTitle
+			INNER JOIN #SoftwareTitleAllowed AS st_allowed ON st_allowed.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+			-- Link from SoftwareTitle to Installations
+        	LEFT OUTER JOIN (
+        			SELECT  InstalledSoftware.*
+        			FROM    InstalledSoftware
+        					INNER JOIN #InstalledSoftwareAllowedComputer AS isac ON isac.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+        	) AS R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware ON R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+        LEFT OUTER JOIN dbo.ComplianceComputer AS R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComplianceComputer ON R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComplianceComputer.ComplianceComputerID = R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware.ComplianceComputerID
+        -- Link from InstalledSoftware to Computer
+        	LEFT OUTER JOIN #ComplianceComputerAllowed AS R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed ON R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed.ComplianceComputerID = R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware.ComplianceComputerID
+        	LEFT OUTER JOIN ComplianceComputer AS R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer ON R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer.ComplianceComputerID = R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed.ComplianceComputerID
+        LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N AS R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputerStatusI18N ON R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputerStatusI18N.ComplianceComputerStatusID = R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer.ComplianceComputerStatusID
+	WHERE   (R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComplianceComputer.ComputerName <> N'' AND R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComplianceComputer.ComputerName IS NOT NULL) AND
+        (R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer.ComplianceComputerStatusID = 1)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for software titles
+                	SELECT  SoftwareTitle.SoftwareTitleID AS [ApplicationID],
+                        SoftwareTitle.FullName AS [ApplicationName],
+                        SoftwareTitleClassificationI18N.DefaultValue AS [Classification],
+                        [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareID],
+                        [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationName],
+                        [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComputerName],
+                        [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationPublisher],
+                        [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationVersion],
+                        [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerID],
+                        [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerStatus],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_SoftwareLicenseID],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Edition],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Name],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Version],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_LicenseType],
+                        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_ParentLicenseID]
+                	FROM    SoftwareTitle
+                			-- Filter
+                			INNER JOIN #SoftwareTitleFilter AS filter ON filter.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                			-- Additional joins
+                			LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID
+                        -- Link from SoftwareTitle to Installations
+                        	LEFT OUTER JOIN (
+                        			SELECT  Main.*,
+                        					Extended.SoftwareTitleID AS R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareLinkID
+                        			FROM (
+                        					-- Custom view query for installed software
+                        						SELECT  InstalledSoftware.InstalledSoftwareID AS [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareID],
+                        					        SoftwareTitle.FullName AS [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationName],
+                        					        ComplianceComputer.ComputerName AS [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComputerName],
+                        					        SoftwareTitlePublisher.PublisherName AS [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationPublisher],
+                        					        SoftwareTitleVersion.VersionName AS [R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationVersion],
+                        					        [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerID],
+                        					        [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerStatus],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_SoftwareLicenseID],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Edition],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Name],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Version],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_LicenseType],
+                        					        [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_ParentLicenseID]
+                        						FROM    InstalledSoftware
+                        								-- Filter
+                        					        INNER JOIN #R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareFilter AS filter ON filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID
+                        								-- Additional joins
+                        								LEFT OUTER JOIN SoftwareTitle ON SoftwareTitle.SoftwareTitleID = InstalledSoftware.SoftwareTitleID
+                        					        LEFT OUTER JOIN dbo.ComplianceComputer ON ComplianceComputer.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+                        					        LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToProductLink ON SoftwareTitleToProductLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleProduct ON SoftwareTitleToProductLink.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID
+                        					        LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToVersionLink ON SoftwareTitleToVersionLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitleToVersionLink.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        					        -- Link from InstalledSoftware to Computer
+                        					        	LEFT OUTER JOIN (
+                        					        			-- Custom view query for computers
+                        					        				SELECT  ComplianceComputer.ComplianceComputerID AS [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerID],
+                        					        			        ComplianceComputerStatusI18N.DefaultValue AS [R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerStatus]
+                        					        				FROM    ComplianceComputer
+                        					        						-- Filter
+                        					        						INNER JOIN #ComplianceComputerAllowed AS filter ON filter.ComplianceComputerID = ComplianceComputer.ComplianceComputerID
+                        					        						-- Additional joins
+                        					        						LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N ON ComplianceComputerStatusI18N.ComplianceComputerStatusID = ComplianceComputer.ComplianceComputerStatusID
+                        					        	) AS InstallationToComputer ON InstallationToComputer.R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerID = InstalledSoftware.ComplianceComputerID
+                        					        -- Link from InstalledSoftware to Assigned License
+                        					        	LEFT OUTER JOIN (
+                        					        			-- Custom view query for licenses
+                        					        				SELECT  SoftwareLicense.SoftwareLicenseID AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_SoftwareLicenseID],
+                        					        			        SoftwareLicense.Edition AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Edition],
+                        					        			        SoftwareLicense.Name AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Name],
+                        					        			        SoftwareLicense.Version AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Version],
+                        					        			        SoftwareLicenseTypeI18N.TypeDefaultValue AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_LicenseType],
+                        					        			        SoftwareLicense.ParentLicenseID AS [R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_ParentLicenseID]
+                        					        				FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                        					        						-- Filter
+                        					        						INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        					        						-- Additional joins
+                        					        						LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        					        	) AS InstallationToLicense ON InstallationToLicense.R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_SoftwareLicenseID = InstalledSoftware.SoftwareLicenseID
+                        			) AS Main
+                        			INNER JOIN InstalledSoftware AS Extended ON Extended.InstalledSoftwareID = Main.R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareID
+                        	) AS ApplicationToInstallation ON ApplicationToInstallation.R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftwareLinkID = SoftwareTitle.SoftwareTitleID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Classification] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ComputerName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationPublisher] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_ApplicationVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComputerStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_c51dc75b004be6bc274092528eaaa146_InstallationToLicense_Version] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

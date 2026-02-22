@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ComplianceReader>
+	<Procedure Name="ActiveDirectory" Order="1"/>
+	<Procedure Name="Computer" Order="2" />
+	<Procedure Name="VirtualMachine" Order="3" />
+	<Procedure Name="Group" Order="4" />
+	<Procedure Name="Evidence" Order="5" />
+	<Procedure Name="MatchARL" Order="6" />
+	<Procedure Name="Usage" Order="7" />
+	<Procedure Name="MatchComputersToAssets" Order="8" />
+	<Procedure Name="MatchComputersToAssetsCustom" Order="9" />
+	<Procedure Name="RemoveMissingComputers" Order="10" />
+	<Procedure Name="RemoveMissingUsers" Order="11" />
+	<Procedure Name="SyncDiscoveredDevice" Order="12" />
+	<Procedure Name="UpdateStatistics" Order="13" />
+	<Procedure Name="LicenseCreateUpdate" Order="14" />
+	<Procedure Name="EntitlementAutomation" Order="15" />
+	<Procedure Name="LicenseReconciliation" Order="16" />
+	<Procedure Name="BusinessIntelligenceRights" Order="17" />
+	<Procedure Name="BusinessIntelligenceData" Order="18" />
+	<Procedure Name="Tenant" Order="19" />
+
+	<!-- The order of this procedure must be such that it runs last -->
+	<Procedure Name="Complete" Order="20" />
+</ComplianceReader>

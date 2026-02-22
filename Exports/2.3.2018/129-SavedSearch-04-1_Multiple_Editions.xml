@@ -1,0 +1,86 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="129" Exclude="" Action="add" FolderID="">
+    <SearchName>04-1 Multiple Editions</SearchName>
+    <Description>Multiple Editions report lists Software Titles installed on SAG Agency computer assets, together with Total Installation Counts, and the number of Product Editions in use per Title.</Description>
+    <FolderName>
+    </FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate software titles that user is allowed access
+	CREATE TABLE #SoftwareTitleAllowed (SoftwareTitleID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'list')) = 1
+	BEGIN
+			INSERT  #SoftwareTitleAllowed SELECT SoftwareTitleID FROM SoftwareTitle
+	END
+
+-- Pre-calculate installed software that user is allowed access
+	CREATE TABLE #InstalledSoftwareAllowedComputer (ComplianceComputerID int PRIMARY KEY)
+
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'read')) = 1
+	BEGIN
+		INSERT	#InstalledSoftwareAllowedComputer
+		SELECT	ComplianceComputerID
+		FROM	TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+	END
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for software titles
+                	SELECT  SoftwareTitle.SoftwareTitleID AS [ApplicationID],
+                        SoftwareTitle.FullName AS [ApplicationName],
+                        Product.ProductName AS [ProductName],
+                        ISNULL(Edition.EditionName, '') AS [Edition],
+                        SoftwareTitleVersion.VersionName AS [ApplicationVersion],
+                        SoftwareTitlePublisher.PublisherName AS [Publisher],
+                        SoftwareTitleClassificationI18N.DefaultValue AS [Classification],
+                        ISNULL(NumberOfInstallationsCount.NumberOfInstallations, 0) AS [NumberOfInstallations]
+                	FROM    SoftwareTitle
+                			-- Filter
+                			INNER JOIN #SoftwareTitleAllowed AS filter ON filter.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                			-- Additional joins
+                			LEFT OUTER JOIN SoftwareTitleProduct AS Product ON SoftwareTitle.SoftwareTitleProductID = Product.SoftwareTitleProductID
+                        LEFT OUTER JOIN SoftwareTitleEdition AS Edition ON SoftwareTitle.SoftwareTitleEditionID = Edition.SoftwareTitleEditionID
+                        LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        INNER JOIN SoftwareTitleProduct ON SoftwareTitle.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID
+                        LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID
+                        LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN (SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID) AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID GROUP BY InstalledSoftware.SoftwareTitleID) AS NumberOfInstallationsCount ON NumberOfInstallationsCount.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ApplicationID] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ProductName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ApplicationVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Publisher] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Classification] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberOfInstallations] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

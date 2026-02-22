@@ -1,0 +1,99 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="194" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportContractsUseRights</SearchName>
+    <Description>Export FNMS Contract User Rights</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate contracts that user is allowed access
+	CREATE TABLE #ContractAllowed (ContractID int PRIMARY KEY)
+	INSERT  #ContractAllowed SELECT * FROM TableContractCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for contracts
+                	SELECT  Contract.ContractID AS [ContractID],
+                        Contract.ContractNo AS [ContractNumber],
+                        Contract.ContractName AS [ContractName],
+                        v.VendorName AS [Vendor],
+                        ContractTypeI18N.ContractTypeDefaultValue AS [ContractType],
+                        Contract.LimitNumberOfApplicationsEachLicensePointCovers AS [LimitNumberOfApplicationsEachLicensePointCovers],
+                        Contract.CoverInstallsOnVirtualMachines AS [CoverInstallsOnVirtualMachines],
+                        Contract.LicenseDowngradeToEdition AS [LicenseDowngradeToEdition],
+                        Contract.LicenseDowngradeToVersion AS [LicenseDowngradeToVersion],
+                        Contract.GrantVirtualInstallsToLicense AS [GrantVirtualInstallsToLicense],
+                        Contract.LicenseDowngradeEnabled AS [LicenseDowngradeEnabled],
+                        Contract.GrantLimitPointsToLicense AS [GrantLimitPointsToLicense],
+                        Contract.GrantSecondUseToLicense AS [GrantSecondUseToLicense],
+                        Contract.LicenseUpgradeEnabled AS [LicenseUpgradeEnabled],
+                        Contract.LimitNumberOfComputersUserLicenseCanBeInstalledOn AS [LimitNumberOfComputersUserLicenseCanBeInstalledOn],
+                        Contract.LimitNumberOfVirtualInstalls AS [LimitNumberOfVirtualInstalls],
+                        Contract.LimitVirtualInstallsIncludesHost AS [LimitVirtualInstallsIncludesHost],
+                        Contract.SecondUsageAtHome AS [SecondUsageAtHome],
+                        Contract.SecondUsageWorkLaptop AS [SecondUsageWorkLaptop],
+                        Contract.LicenseUpgradeToVersion AS [LicenseUpgradeToVersion],
+                        Contract.LicenseUpgradeUntilContractExpiry AS [LicenseUpgradeUntilContractExpiry],
+                        Contract.NumberOfAllowedVirtualInstalls AS [NumberOfAllowedVirtualInstalls],
+                        Contract.UseHostProcessorInformation AS [UseHostProcessorInformation],
+                        Contract.Comments AS [Comments],
+                        Contract.EndDate AS [EndDate],
+                        MasterContract.ContractNo AS [MasterContractNumber],
+                        Contract.NeverExpires AS [NeverExpires],
+                        Contract.RenewalDate AS [RenewalDate],
+                        Contract.NumberOfApplicationInstallsAllowedPerLicensePoint AS [NumberOfApplicationInstallsAllowedPerLicensePoint],
+                        Contract.NumberOfComputersAllowedPerUserLicensePoint AS [NumberOfComputersAllowedPerUserLicensePoint],
+                        Project.ProjectName AS [ProjectName],
+                        PurchaseProgram.Name AS [PurchaseProgram],
+                        (SELECT ContractName FROM dbo.GetReplacementContractName(Contract.ContractID)) AS [ReplacementContractName],
+                        Contract.PreExpiryDate AS [PreExpiryDate],
+                        Contract.StartDate AS [StartDate],
+                        ContractState.DefaultValue AS [ContractState],
+                        ContractStatusI18N.DefaultValue AS [ContractStatus],
+                        CAST(Contract.TotalValue * TotalValueRate.Rate AS money) AS [TotalValue],
+                        Contract.MasterContractID AS [MasterContractID]
+                	FROM    Contract
+                			-- Filter
+                			INNER JOIN #ContractAllowed AS filter ON filter.ContractID = Contract.ContractID
+                			-- Additional joins
+                			LEFT OUTER JOIN dbo.Vendor AS v ON v.VendorID = Contract.VendorID
+                        LEFT OUTER JOIN dbo.ContractTypeI18N ON ContractTypeI18N.ContractTypeID = Contract.ContractTypeID
+                        LEFT OUTER JOIN [Contract] AS MasterContract ON MasterContract.ContractID = [Contract].MasterContractID
+                        LEFT OUTER JOIN Project ON Project.ProjectID = Contract.ProjectID
+                        LEFT OUTER JOIN PurchaseProgram ON PurchaseProgram.PurchaseProgramID = Contract.PurchaseProgramID
+                        LEFT OUTER JOIN ContractState ON ContractState.ContractStateID = Contract.ContractStateID
+                        LEFT OUTER JOIN dbo.ContractStatusI18N ON ContractStatusI18N.ContractStatusID = Contract.ContractStatusID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS TotalValueRate ON TotalValueRate.CurrencyRateID = Contract.TotalValueRateID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ContractNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ContractName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="TermsAndConditionsSpreadsheet" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-TermsAndConditionsSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+      Query="
+SELECT 
+  *
+FROM [TermsAndConditions$]
+WHERE 
+  [ContractNo] IS NOT NULL
+  AND
+  [Type] IS NOT NULL  
+  AND
+  [Description] IS NOT NULL" 
+    
+  TraceActions="created,deleted,updated,rejected" 
+  TraceFields="[ContractNo]" 
+  tracelifetime="0 Day(s)" 
+  BulkCopyTimeOut="0" 
+  BulkCopyBatchSize="1"
+  UsePhysicalTable="True" 
+  datatablename="dbo.ECMImport_TermsAndConditions"
+  >
+  
+      <Log Name="NewLog" Output="File" LogLevel="Debug" Content="All" FileName="C:\LogFiles\TermsAndConditionsSpreadsheet_[DATE]_[TIME].log" />
+      
+      <Object Type="Custom" Name="Add Columns" Query="      
+      IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_TermsAndConditions' AND column_name = 'TcType')
+      ALTER TABLE dbo.[ECMImport_TermsAndConditions] ADD [TcType] nvarchar(40)
+      "/>
+            
+      <Object Type="Custom" Name="Set NULL Defaults" TimeOut="-1" 
+	    Query="
+UPDATE ECMImport_TermsAndConditions
+SET [TcType] = ISNULL([Type], 'Review')
+      "/> 
+      
+      <Object Type="Contract" Name="Contract" Update="False" Create="False" OutputField="Contract_ID">
+        <Property Type="contractno" Name="Contract Number" ValueType="Field Value" Value="ContractNo" UseForMatching="True" Length="60" />
+        <Property Type="contractname" Name="Contract Name" ValueType="Field Value" Value="ContractName   " Length="100" />
+      </Object>
+
+      <Object Type="TermAndCondition" Name="Terms And Conditions" Update="True" Create="True" OutputField="TermsAndConditions_ID">
+        <Property Type="contractid" Name="Contract ID" Update="Do not blank" ValueType="Field Value" Value="Contract_ID" UseForMatching="True" DataType="Integer" UseNullValueForMatching="RemoveProperty"/>
+        <Property Type="termandconditiontype" Name="Term and Condition Type" Update="Do not blank" ValueType="Field Value" Value="TcType" UseForMatching="True" Length="100" UseNullValueForMatching="RemoveObject"/>		
+        <Property Type="description" Name="Description" Update="Do not blank" ValueType="Field Value" Value="Description" UseForMatching="True" Length="100" UseNullValueForMatching="RemoveProperty"/>
+        <Property Type="docreference" Name="Document Reference" Update="Do not blank" ValueType="Field Value" Value="Doc Reference" Length="100" OnMissingFieldValue="Remove Property"/>
+        <Property Type="begindate" Name="Begin Date" Update="Do not blank" ValueType="Field Value" Value="Begin Date" DataType="Date" OnMissingFieldValue="Remove Property"/>
+        <Property Type="enddate" Name="End Date" Update="Do not blank" ValueType="Field Value" Value="End Date" DataType="Date" OnMissingFieldValue="Remove Property"/>
+        <Property Type="comments" Name="Comments" Update="Do not blank" ValueType="Field Value" Value="Comments" OnMissingFieldValue="Remove Property"/>
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

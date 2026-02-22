@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="002.01.00 Software License Purchases" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>SQL view [CustomViewSoftwareLicensePurchases] that lists software license purchases linked to each license</Description>
+    <FolderName>Governance Reports (SQL)</FolderName>
+    <CreationDate>22/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT *
+FROM dbo.[CustomViewSoftwareLicensePurchases]
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

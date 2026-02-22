@@ -1,0 +1,119 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="184" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicenses2015</SearchName>
+    <Description>Export FNMS Licenses (2015)</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicense.Edition AS [Edition],
+                        SoftwareLicense.Version AS [Version],
+                        Publisher.VendorName AS [PublisherName],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        SoftwareLicenseMetricI18N.DefaultValue AS [Metric],
+                        sltp.CompliancePriority AS [Priority],
+                        LicenseStatusI18N.DefaultValue AS [LicenseStatus],
+                        SoftwareLicense.AlwaysInstalled AS [AlwaysInstalled],
+                        SoftwareLicense.ExpiryDate AS [ExpiryDate],
+                        SoftwareLicense.TrueUp AS [LicenseSubjectToTrueUp],
+                        SoftwareLicense.LimitNumberOfVirtualInstalls AS [LimitNumberOfVirtualInstalls],
+                        ComplianceUser.UserName AS [ManagerName],
+                        SoftwareLicense.DowngradeEnabled AS [DowngradeEnabled],
+                        SoftwareLicense.DowngradeToEdition AS [DowngradeToEdition],
+                        SoftwareLicense.DowngradeToVersion AS [DowngradeToVersion],
+                        DowngradeEdition.EditionName AS [DowngradeToEditionName],
+                        DowngradeVersion.VersionName AS [DowngradeToVersionName],
+                        SoftwareLicense.UpgradeEnabled AS [UpgradeEnabled],
+                        SoftwareLicense.UpgradeToVersion AS [UpgradeToVersion],
+                        UpgradeVersion.VersionName AS [UpgradeToVersionName],
+                        SoftwareLicense.UpgradeUntil AS [UpgradeUntil],
+                        SoftwareLicense.UpgradeUntilDate AS [UpgradeUntilDate],
+                        AssetWarrantyTypeI18N.WarrantyTypeDefaultValue AS [LicenseWarrantyType],
+                        SoftwareLicense.WarrantyExpiryDate AS [WarrantyExpiryDate],
+                        SoftwareLicense.RetirementDate AS [RetirementDate],
+                        EndOfLifeReason.ResourceName AS [EndOfLifeReason],
+                        SoftwareLicense.Comments AS [Comments],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+                        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN SoftwareLicenseMetricI18N ON SoftwareLicenseMetricI18N.SoftwareLicenseMetricID = SoftwareLicense.SoftwareLicenseMetricID
+                        LEFT OUTER JOIN SoftwareLicenseTypePriority AS sltp ON sltp.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN LicenseStatusI18N ON LicenseStatusI18N.LicenseStatusID = SoftwareLicense.LicenseStatusID
+                        LEFT OUTER JOIN ComplianceUser ON ComplianceUser.ComplianceUserID = SoftwareLicense.ManagerID
+                        LEFT OUTER JOIN SoftwareTitleEdition AS DowngradeEdition ON DowngradeEdition.SoftwareTitleEditionID = SoftwareLicense.DowngradeToEditionID
+                        LEFT OUTER JOIN SoftwareTitleVersion as DowngradeVersion on DowngradeVersion.SoftwareTitleVersionID = SoftwareLicense.DowngradeToVersionID
+                        LEFT OUTER JOIN SoftwareTitleVersion as UpgradeVersion on UpgradeVersion.SoftwareTitleVersionID = SoftwareLicense.UpgradeToVersionID
+                        LEFT OUTER JOIN AssetWarrantyTypeI18N ON AssetWarrantyTypeI18N.AssetWarrantyTypeID = SoftwareLicense.WarrantyTypeID
+                        LEFT OUTER JOIN EndOfLifeReason ON EndOfLifeReason.EndOfLifeReasonID = SoftwareLicense.EndOfLifeReasonID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Version] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([PublisherName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseType] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Metric] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Priority] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([AlwaysInstalled] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ExpiryDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseSubjectToTrueUp] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LimitNumberOfVirtualInstalls] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ManagerName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([DowngradeEnabled] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([DowngradeToEdition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([DowngradeToVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([DowngradeToEditionName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([DowngradeToVersionName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UpgradeEnabled] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UpgradeToVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UpgradeToVersionName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UpgradeUntil] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UpgradeUntilDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseWarrantyType] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([WarrantyExpiryDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([RetirementDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([EndOfLifeReason] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Comments] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

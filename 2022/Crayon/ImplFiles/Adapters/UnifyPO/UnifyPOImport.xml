@@ -1,0 +1,234 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="True" />	
+	<Imports>
+		<Import 
+			Name="UnifyPOs" 
+			Type="SqlServer" 
+    		ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=FNMSCompliance_PROD;Data Source=ITS-DS-SQLAG02.compute.dc.uq.edu.au;MultiSubnetFailover=true" 
+    		Query="
+			
+/*
+
+	-- Legacy voucher processing system that was used for credit card purchases.  
+	-- This has been replaced by the CREDITCARD_TRANS source
+
+	SELECT 
+		a.PURCHASE_ORDER_NO, 
+		a.PURCHASE_DATE,
+		a.VENDOR,
+		a.[STATUS],
+		'' AS COMMENTS,
+		a.CORPORATE_UNIT,
+		a.REQUEST_DATE,
+		'' AS REQUESTOR,
+		'' AS AUTHORISED_BY,
+		'' AS PROCESSED_BY,
+		a.INVOICE_NO,
+		a.INVOICE_DATE,
+		b.ITEM_NO, 
+		b.[DESCRIPTION], 
+		b.LICENSE_QUANTITY, 
+		b.SKU_PART_NO AS PART_NO,
+		b.[TYPE], 
+		b.OPAL_CODE, 
+		b.INTERNAL, 
+		CAST(b.UNIT_PRICE AS NVARCHAR(20)) AS UNIT_PRICE, 
+		b.CALCULATED_QUANTITY, 
+		b.PO_QUANTITY,
+		NULL AS LINE_COMMENTS,
+		SUBSTRING(OPAL_CODE, 1, 2) AS FACULTY_CODE,
+		SUBSTRING(OPAL_CODE, 3, 3) AS SCHOOL_CODE,
+		SUBSTRING(OPAL_CODE, 6, 2) AS SECTION_CODE,
+		CAST(NULL AS NVARCHAR(500)) AS CORPORATE_UNIT_ID
+FROM  ITSXFRP_FNMP..TO_FLEXERA.FIN_VOUCHER_PO AS a
+	LEFT OUTER JOIN ITSXFRP_FNMP..TO_FLEXERA.FIN_VOUCHER_PO_LINE AS b
+		ON a.purchase_order_no = SUBSTRING(b.purchase_order_no,9,8)
+
+
+UNION
+*/			
+			
+	SELECT 
+		a.PURCHASE_ORDER_NO,
+		a.PURCHASE_DATE,
+		a.VENDOR,
+		a.[STATUS],
+		a.COMMENTS,
+		a.CORPORATE_UNIT,
+		a.REQUEST_DATE,
+		a.REQUESTOR,
+		a.AUTHORISED_BY,
+		'' AS PROCESSED_BY,
+		a.INVOICE_NO,
+		a.INVOICE_DATE,
+		b.ITEM_NO,
+		b.[DESCRIPTION], 
+		b.LICENSE_QUANTITY, 
+		b.PART_NO, 
+		b.[TYPE], 
+		b.OPAL_CODE, 
+		b.INTERNAL, 
+		CAST(b.UNIT_PRICE AS NVARCHAR(20)) AS UNIT_PRICE,  
+		b.CALCULATED_QUANTITY, 
+		b.PO_QUANTITY,
+		b.COMMENTS AS LINE_COMMENTS,
+		SUBSTRING(OPAL_CODE, 1, 2) AS FACULTY_CODE,
+		SUBSTRING(OPAL_CODE, 3, 3) AS SCHOOL_CODE,
+		SUBSTRING(OPAL_CODE, 6, 2) AS SECTION_CODE,
+		CAST(NULL AS NVARCHAR(500)) AS CORPORATE_UNIT_ID
+	FROM  ITSXFRP_FNMP..TO_FLEXERA.FIN_PO AS a
+		LEFT OUTER JOIN ITSXFRP_FNMP..TO_FLEXERA.FIN_PO_LINE AS b
+			ON a.purchase_order_no = b.purchase_order_no
+
+	UNION
+
+	SELECT 
+		a.PURCHASE_ORDER_NO,
+		a.PURCHASE_DATE,
+		a.VENDOR,
+		a.[STATUS],
+		a.COMMENTS,
+		a.CORPORATE_UNIT,
+		a.REQUEST_DATE,
+		a.REQUESTOR,
+		a.AUTHORISED_BY,
+		'' AS INVOICE_NO,
+		'' AS PROCESSED_BY,
+		NULL AS INVOICE_DATE,
+		CAST(b.ITEM_NO AS NVARCHAR(5)) AS ITEM_NO,
+		b.[DESCRIPTION], 
+		0 AS LICENSE_QUANTITY, 
+		'' AS PART_NO, 
+		b.[TYPE], 
+		b.OPAL_CODE, 
+		b.INTERNAL, 
+		CAST(b.UNIT_PRICE AS NVARCHAR(20)) AS UNIT_PRICE,
+		b.CALCULATED_QUANTITY,
+		b.PO_QUANTITY,
+		'' AS LINE_COMMENTS,
+		SUBSTRING(OPAL_CODE, 1, 2) AS FACULTY_CODE,
+		SUBSTRING(OPAL_CODE, 3, 3) AS SCHOOL_CODE,
+		SUBSTRING(OPAL_CODE, 6, 2) AS SECTION_CODE,
+		CAST(NULL AS NVARCHAR(500)) AS CORPORATE_UNIT_ID
+	FROM  ITSXFRP_FNMP..TO_FLEXERA.FIN_ISC_PO AS a
+		LEFT OUTER JOIN ITSXFRP_FNMP..TO_FLEXERA.FIN_ISC_PO_LINE AS b
+			ON a.purchase_order_no = b.purchase_order_no
+
+
+	UNION
+
+	SELECT		
+		a.COMMITMENT_ID AS PURCHASE_ORDER_NO,
+		CONVERT(DATETIME2, a.EFFECTIVE_TRANS_DATE, 105) AS PURCHASE_DATE,
+		'UQ Corporate Card Provider' AS VENDOR, 
+		'Completed' AS [STATUS],
+		a.PURPOSE AS COMMENTS,
+		'' AS CORPORATE_UNIT,
+		CONVERT(DATETIME2, NULL) AS REQUEST_DATE,
+		'' AS REQUESTOR,
+		'' AS AUTHORISED_BY,
+		a.[USER_NAME] AS PROCESSED_BY,
+		'' AS INVOICE_NO,
+		NULL AS INVOICE_DATE,
+		/*  
+			Extract the last part of the UNIQ_TRANS_REF value and use it it to construct an item number
+			It is in the form [COMMITMENT_ID].[Major].[Minor]
+			e.g. For 'X0000000000000236620.1.1' the ITEM_NO will be '1.1'
+		*/
+		SUBSTRING(
+			a.UNIQ_TRANS_REF, 
+			CHARINDEX('.', a.UNIQ_TRANS_REF) + 1, 
+			LEN(a.UNIQ_TRANS_REF) - CHARINDEX('.', REVERSE(a.UNIQ_TRANS_REF)) - 1
+		) AS ITEM_NO, 
+		ISNULL(a.MERCHANT_NAME, '') + ' / ' + ISNULL(a.TRANS_DESCRIPTION, '') AS [DESCRIPTION],
+		0 AS LICENSE_QUANTITY, 
+		'' AS PART_NO, 
+		a.[TYPE], 
+		a.DEPTID AS OPAL_CODE, 
+		'' AS INTERNAL, 
+		CAST(a.AMOUNT AS NVARCHAR(20)) AS UNIT_PRICE, 
+		1 AS CALCULATED_QUANTITY,
+		1 AS PO_QUANTITY,
+		'' AS LINE_COMMENTS,
+		SUBSTRING(a.DEPTID, 1, 2) AS FACULTY_CODE,
+		SUBSTRING(a.DEPTID, 3, 3) AS SCHOOL_CODE,
+		SUBSTRING(a.DEPTID, 6, 2) AS SECTION_CODE,
+		CAST(NULL AS NVARCHAR(500)) AS CORPORATE_UNIT_ID
+FROM ITSXFRP_FNMP..TO_FLEXERA.CREDITCARD_TRANS AS a 			
+			" 
+			TimeOut="0" 
+    		TraceActions="created,deleted,updated,rejected" 
+    		UsePhysicalTable="True"
+    		>
+    	
+			<Log Name="NewLog" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" />
+      
+			<Object Type="Custom" Name="LookupCorporateUnit" 
+				Comments="Lookup corporate unit based on matching faculty code, school code and section code to levels 2, 3 and 4 of the corporate unit hierarchy. If all 3 levels do not match, match as many levels as possible.
+				For example: if faculty, school and section codes are &quot;10&quot;, &quot;083&quot; and &quot;01&quot; respectively, this will match to something like &quot;UQ\10 - Science\083 - Dentistry\01 - A section&quot; in the corporate unit hierarchy. If there was no section &quot;01&quot; in the hierarchy, it would match to just &quot;UQ\10 - Science\083 - Dentistry&quot; (assuming school &quot;083&quot; exists).
+				" 
+				TimeOut="-1" 
+				Query="
+					UPDATE u
+					SET CORPORATE_UNIT_ID = COALESCE(gex4.GroupExID, gex3.GroupExID, gex2.GroupExID, gex1.GroupExID)
+					FROM ECMImport_UnifyPOs u
+					JOIN GroupEx gex1
+						ON gex1.GroupCN = 'UQ' AND gex1.GroupTypeID = 2 AND dbo.CountChar(gex1.GroupExID, '.') = 2
+					LEFT OUTER JOIN GroupEx gex2
+						ON gex2.GroupCN LIKE u.FACULTY_CODE + '%' AND gex2.GroupTypeID = 2 AND gex2.GroupExID LIKE gex1.GroupExID + '%.' AND dbo.CountChar(gex2.GroupExID, '.') = 3
+					LEFT OUTER JOIN GroupEx gex3
+						ON gex3.GroupCN LIKE u.SCHOOL_CODE + '%' AND gex3.GroupTypeID = 2 AND gex3.GroupExID LIKE gex2.GroupExID + '%.' AND dbo.CountChar(gex3.GroupExID, '.') = 4
+					LEFT OUTER JOIN GroupEx gex4
+						ON gex4.GroupCN LIKE u.SECTION_CODE + '%' AND gex4.GroupTypeID = 2 AND gex4.GroupExID LIKE gex3.GroupExID + '%.' AND dbo.CountChar(gex4.GroupExID, '.') = 5
+				"/>
+      
+			<Object Type="Vendor" Name="Vendor" Update="True" Create="True" OutputField="Vendor_ID">
+				<Property Type="vendorname" Name="Vendor Name" ValueType="Field Value" Value="VENDOR" UseForMatching="True" Length="64" />
+			</Object>
+      
+			<Object Type="User" Name="Requestor" Update="True" Create="True" OutputField="Requestor_User_ID">
+				<Property Type="samaccountname" Name="SAMAccountName" ValueType="Field Value" Value="REQUESTOR" UseForMatching="True" Length="64" />
+			</Object>
+
+			<Object Type="User" Name="AuthorisedBy" Update="True" Create="True" OutputField="AuthorisedBy_User_ID">
+				<Property Type="samaccountname" Name="SAMAccountName" ValueType="Field Value" Value="AUTHORISED_BY" UseForMatching="True" Length="64" />
+			</Object>
+
+			<Object Type="User" Name="ProcessedBy" Update="True" Create="True" OutputField="ProcessedBy_User_ID">
+				<Property Type="samaccountname" Name="SAMAccountName" ValueType="Field Value" Value="PROCESSED_BY" UseForMatching="True" Length="64" />
+			</Object>
+
+			<Object Type="PurchaseOrder" Name="Purchase Order" Update="True" Create="True" OutputField="PurchaseOrder_ID">
+				<Property Type="purchaseorderno" Name="Purchase Order No" Update="Do not blank" ValueType="Field Value" Value="PURCHASE_ORDER_NO" UseForMatching="True" Length="50" />
+				<Property Type="purchaseorderdate" Name="Purchase Date" Update="Do not blank" ValueType="Field Value" Value="PURCHASE_DATE" DataType="Date" />
+				<Property Type="vendorid" Name="Vendor ID" Update="Do not blank" ValueType="Field Value" Value="Vendor_ID" DataType="Integer" />
+			</Object>
+
+			<Object Type="PurchaseOrderLine" Name="Purchase Order Line" Update="True" Create="True" OutputField="PurchaseOrderLine_ID">
+				<Property Type="purchaseorderid" Name="Purchase Order ID" Update="Do not blank" ValueType="Field Value" Value="PurchaseOrder_ID" UseForMatching="True" DataType="Integer" />
+				<Property Type="sequencenumber" Name="Purchase Order Line Sequence" Update="Do not blank" ValueType="Field Value" Value="RowNumber" DataType="Integer" />
+				<Property Type="purchaseorderdetailtype" Name="Purchase Type" Update="Never" ValueType="Field Value" Value="TYPE" />
+				<Property Type="itemdescription" Name="Description" Update="Never" ValueType="Field Value" Value="DESCRIPTION" Length="250" />
+				<Property Type="licensepartno" Name="Part No/SKU" Update="Never" ValueType="Field Value" Value="PART_NO" Length="100" />
+				<Property Type="quantity" Name="Purchase Quantity" Update="Do not blank" ValueType="Field Value" Value="PO_QUANTITY" DataType="Integer" />
+				<Property Type="publisherid" Name="Publisher ID" Update="Do not blank" ValueType="Field Value" Value="Vendor_ID" DataType="Integer" />
+				<Property Type="purchaseorderdetailstatus" Name="Status" Update="Do not blank" ValueType="Field Value" Value="STATUS" />
+				<Property Type="unitprice" Name="Unit Price" Update="Do not blank" ValueType="Field Value" Value="UNIT_PRICE" DataType="Float" />
+				<Property Type="unitpricerateid" Name="Unit Price Currency Rate ID" Update="Do not blank" ValueType="Fixed Value" Value="1" DataType="Integer" />
+				<Property Type="totalpricerateid" Name="Total Price Currency Rate ID" Update="Do not blank" ValueType="Fixed Value" Value="1" DataType="Integer" />
+				<Property Type="requestdate" Name="Request Date" Update="Do not blank" ValueType="Field Value" Value="REQUEST_DATE" DataType="Date" />
+				<Property Type="requestedbyid" Name="Requestor ID" Update="Do not blank" ValueType="Field Value" Value="Requestor_User_ID" DataType="Integer" />
+				<Property Type="authorizedbyid" Name="Authorized By ID" Update="Do not blank" ValueType="Field Value" Value="AuthorisedBy_User_ID" DataType="Integer" />
+				<Property Type="processedbyid" Name="Processed By ID" Update="Do not blank" ValueType="Field Value" Value="ProcessedBy_User_ID" DataType="Integer" />
+				<Property Type="invoicedate" Name="Invoice Date" Update="Do not blank" ValueType="Field Value" Value="INVOICE_DATE" DataType="Date" />
+				<Property Type="invoiceno" Name="Invoice Number" Update="Do not blank" ValueType="Field Value" Value="INVOICE_NO" Length="50" />
+				<Property Type="comments" Name="Comments" Update="Never" ValueType="Field Value" Value="COMMENTS" />
+				<Property Type="custompodinternal" Name="CustomPODInternal" Update="Do not blank" ValueType="SQL" Value="case when INTERNAL= 'Y' then 'True' else 'False' end" Length="512" IsCustomField="True" />
+				<Property Type="custompodinternalorderstatus" Name="CustomPODInternalOrderStatus" Update="Do not blank" ValueType="Field Value" Value="STATUS" Length="512" IsCustomField="True" />
+				<Property Type="custompoditemnumber" Name="CustomPODItemNumber" Update="Do not blank" ValueType="Field Value" Value="ITEM_NO" UseForMatching="True" Length="512" IsCustomField="True" />
+				<Property Type="businessunitid" Name="Corporate Unit ID" Update="Do not blank" ValueType="Field Value" Value="CORPORATE_UNIT_ID" Length="128" />
+			</Object>
+		</Import>
+	</Imports>
+</root>

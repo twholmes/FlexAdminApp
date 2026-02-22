@@ -1,0 +1,61 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Raw Inventory Reports</SearchName>
+    <Description>This report lists Inventory Reports received by Inventory Manager.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        WITH InventoryReports AS
+        (       
+          SELECT 
+            c.[ComputerID]
+            ,ir.ComputerID as InventoryComputerID
+            ,c.ComputerCN as ComputerName
+            ,c.ComputerOUID
+            ,d.DN as DomainName
+            ,ir.[SWDate]
+            ,ir.[HWDate]
+            ,ir.[FilesDate]
+            ,ir.[ServicesDate]
+            ,ir.[VMwareServicesDate]
+            ,ir.[SequenceNumber]
+            ,ir.[OVMMDate]
+            ,ROW_NUMBER() OVER(PARTITION BY c.ComputerCN ORDER BY ir.SwDate DESC) as [Rank]
+            ,cx.n as [Duplicates]
+          FROM
+           [FNMSInventory].[dbo].[Computer] as c
+           LEFT OUTER JOIN [FNMSInventory].[dbo].[InventoryReport] as ir on c.ComputerID = ir.ComputerID
+           LEFT OUTER JOIN [FNMSInventory].[dbo].[Organization] as o on o.OrganizationID = c.ComputerOUID
+           LEFT OUTER JOIN [FNMSInventory].[dbo].[Domain] as d on d.OrganizationID = o.DomainID
+           JOIN
+           (
+             select ComputerCN, count(ComputerID) as n from [FNMSInventory].[dbo].[Computer] group by ComputerCN
+           ) as cx on c.ComputerCN = cx.ComputerCN
+        )
+        SELECT
+          ir.[ComputerID]
+          ,ir.InventoryComputerID
+          ,ir.ComputerName
+          ,ir.ComputerOUID
+          ,ir.DomainName
+          ,ir.[SWDate]
+          ,ir.[HWDate]
+          ,ir.[FilesDate]
+          ,ir.[ServicesDate]
+          ,ir.[VMwareServicesDate]
+          ,ir.[SequenceNumber]
+          ,ir.[OVMMDate]
+          ,ir.[Rank]
+          ,ir.[Duplicates]
+        FROM
+          InventoryReports ir
+        ORDER BY 
+          ir.ComputerName, ir.[SWDate]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ComputerID,InventoryComputerID,ComputerName,ComputerOUID,DomainName,SWDate,HWDate,FilesDate,ServicesDate,VMwareServicesDate,SequenceNumber,OVMMDate,Rank,Duplicates
+    </SearchColumns>          
+  </Report>
+</CustomReports>

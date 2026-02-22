@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="173" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportPurchasesSQL</SearchName>
+    <Description>This report exports Purchase detail records using a custom SQL query</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+    pod.[PurchaseOrderDetailID]
+    ,po.[PurchaseOrderNo]
+    ,pod.[SequenceNumber]
+    ,pod.[ItemDescription]   
+    ,v.[VendorName]
+    ,pub.[VendorName] AS [PublisherName]
+    ,podtx.[PurchaseType]    
+    ,pod.[PartNo]
+    ,pod.[LicensePartNo]
+    ,pod.[Quantity] AS [PurchaseQuantity]
+    ,pod.[QuantityPerUnit]
+    ,posx.[PurchaseOrderStatus] AS [Status]
+    ,pod.[UnitPrice]
+    ,pod.[SalesTax]
+    ,pod.[ShippingAndHandling]
+    ,pod.[ShippingDate]
+    ,pod.[TotalPrice]
+    ,po.[PurchaseOrderDate] AS [PurchaseDate]
+    ,c.[ContractNo]
+    ,cri.[CurrencyCode]
+    ,cri.[SnapshotDate] AS [CurrencyDate]
+    ,cri.[SnapshotName] AS [CurrencySnapshotName]
+    ,cri.[Rate] AS [CurrencyRate]
+    ,po.[RequestNo]
+    ,po.[RequestDate]
+    ,pod.[InvoiceNo]
+    ,pod.[InvoiceDate]
+    ,g1.[Path] AS [Location]
+    ,g3.[Path] AS [BusinessUnit]
+    ,g2.[Path] AS [CostCenter]
+    ,g4.[Path] AS [Category]
+    ,pod.[Comments]
+  FROM dbo.[PurchaseOrderDetail] AS pod
+    JOIN dbo.[PurchaseOrder] AS po ON po.PurchaseOrderID = pod.PurchaseOrderID
+    LEFT OUTER JOIN dbo.[Vendor] as pub ON pub.VendorID = pod.PublisherID
+    LEFT OUTER JOIN dbo.[Vendor] as v ON v.VendorID = po.VendorID
+    LEFT OUTER JOIN dbo.[Contract] AS c ON pod.[ContractID] = c.[ContractID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g1 ON pod.[LocationID] = g1.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g2 ON pod.[CostCenterID] = g2.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g3 ON pod.[BusinessUnitID] = g3.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g4 ON pod.[CategoryID] = g4.[GroupExID]
+    LEFT OUTER JOIN dbo.CurrencyRateInfo AS cri ON cri.CurrencyRateID = pod.UnitPriceRateID
+    LEFT OUTER JOIN
+    (
+      SELECT
+        podt.[PurchaseOrderDetailTypeID],
+        rsct.[ResourceValue] AS [PurchaseType]
+      FROM dbo.[PurchaseOrderDetailType] podt
+        JOIN dbo.ResourceStringCultureType rsct ON podt.ResourceName = rsct.ResourceString and rsct.CultureType = 'en-US'
+    ) podtx ON podtx.[PurchaseOrderDetailTypeID] = pod.[PurchaseOrderDetailTypeID]
+    LEFT OUTER JOIN
+    (
+      SELECT
+        pos.[PurchaseOrderStatusID],
+        rsct.[ResourceValue] AS [PurchaseOrderStatus]
+      FROM dbo.[PurchaseOrderStatusI18N] pos
+        JOIN dbo.ResourceStringCultureType rsct ON pos.ResourceName = rsct.ResourceString and rsct.CultureType = 'en-US'
+    ) posx ON posx.[PurchaseOrderStatusID] = po.[PurchaseOrderStatusID]
+  ORDER BY po.[PurchaseOrderNo], pod.[SequenceNumber]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

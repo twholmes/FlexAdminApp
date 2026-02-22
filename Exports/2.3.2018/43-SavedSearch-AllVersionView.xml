@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="43" Exclude="" Action="add" FolderID="">
+    <SearchName>AllVersionView</SearchName>
+    <Description>Shows the licenses with version information (default view in ManageSoft doesn't include version!!!!).</Description>
+    <FolderName>License Compliance/Software Licensing</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

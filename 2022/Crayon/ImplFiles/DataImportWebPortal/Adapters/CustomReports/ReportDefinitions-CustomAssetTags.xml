@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Custom Report Asset Tags</SearchName>
+    <Description>This report shows UQ Custom Asset Tags.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+SELECT 
+  ai.[AssetID]
+  ,ai.[ShortDescription] AS [AssetName]
+  ,ai.[AssetTypeName]
+  ,ai.[SerialNumber]
+  ,ai.[AssetTag]
+  ,case
+    when PATINDEX('%/%', av.CustomAssetUQAssetTag) = 0 AND ai.[AssetTag] = '' then av.[CustomAssetUQAssetTag]  
+    when PATINDEX('%/%', av.CustomAssetUQAssetTag) > 0 then ''
+	else ai.[AssetTag]
+  end as [NewAssetTag]
+  ,av.[CustomAssetUQAssetTag]
+  ,av.[NewCustomAssetUQAssetTag]
+FROM 
+  [dbo].[AssetInfo] as ai
+  JOIN 
+  (
+    SELECT
+	  apv.AssetID,
+	  apv.PropertyValue AS [CustomAssetUQAssetTag],
+	  case
+	    when apv.PropertyValue is null then ''
+	    when PATINDEX('%/%', apv.PropertyValue) > 0 then apv.PropertyValue
+		else ''
+	  end as [NewCustomAssetUQAssetTag]
+     FROM
+	   [dbo].[AssetPropertyValue_MT] as apv
+       JOIN [dbo].[AssetTypeProperty_MT] as atp ON apv.AssetTypePropertyID = atp.AssetTypePropertyID
+     WHERE
+	   atp.PropertyName like 'CustomAssetUQAssetTag'
+  ) as av ON av.AssetID = ai.AssetID
+WHERE
+  (ai.[AssetTag] is not null AND ai.[AssetTag] <> '') OR (av.[CustomAssetUQAssetTag] is not null AND av.[CustomAssetUQAssetTag] <> '')
+ORDER BY
+  ai.[ShortDescription]	  
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+       AssetID,AssetName,AssetTypeName,SerialNumber,AssetTag,NewAssetTag,CustomAssetUQAssetTag,NewCustomAssetUQAssetTag
+    </SearchColumns>          
+  </Report>
+</CustomReports>

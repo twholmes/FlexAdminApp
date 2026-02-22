@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="Assets" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-GenericAssetSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+      Query="select * from [Assets$]" 
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="('Name ' + [Name])"
+      UsePhysicalTables="false"            
+      DataTableName="#Assets"
+      >   
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+        
+      <Object Type="Custom" Name="Add Decoded" Query="
+        ALTER TABLE #Assets ADD [AssetStatus] nvarchar(64)
+        ALTER TABLE #Assets ADD [AssetType] nvarchar(100)       
+      "/>
+    
+      <!--
+        Initialise derived attributes
+      -->      
+      <Object Type="Custom" Name="Initialise Report Definitions" Query="                    
+        UPDATE #Assets SET [AssetStatus] = ''         
+        UPDATE #Assets SET [AssetType] = ''
+      "/>
+
+      <Object Name="Map asset status" Type="Custom" Query="
+        UPDATE #Assets
+        SET AssetStatus =
+          CASE Status
+            WHEN 'Installed' THEN 'Installed'
+            WHEN 'In storage' THEN 'In Storage'
+            WHEN 'Retired' THEN 'Retired'
+            WHEN 'Disposed' THEN 'Disposed'
+            WHEN 'Purchased' THEN 'Purchased'
+            WHEN 'In repair' THEN 'in Repair'
+            ELSE 'Invalid'
+          END
+      "/>
+
+      <Object Name="Map asset types" Type="Custom" Query="
+        UPDATE #Assets
+        SET AssetType =
+          CASE [Asset type]
+            WHEN 'Workstations' THEN 'Workstation'
+            WHEN 'Laptop' THEN 'Laptop'
+            WHEN 'Mobile' THEN 'Modile'
+            WHEN 'Monitors' THEN 'Monitors'
+            WHEN 'Telephone' THEN 'Telephone'
+            WHEN 'Audio Visual' THEN 'Audio Visual'
+            WHEN 'Network Others' THEN 'Network Others'
+            WHEN 'Printer' THEN 'Printer'
+            WHEN 'Router' THEN 'Router'
+            WHEN 'Server' THEN 'Server'
+            ELSE NULL
+          END
+      "/>
+      
+      <Object Name="Discard records with unknown type or name" Type="Custom" Query="
+        DELETE FROM #Assets WHERE AssetType IS NULL OR Name IS NULL OR ([Serial number] IS NULL AND [Asset Tag] IS NULL)
+      "/>
+
+      <Object Type="User" Name="Lookup Assigned Users by Email" Update="False" Create="False" OutputField="AssignedUserID">
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="Assigned user" UseForMatching="True" Length="200" />
+      </Object>
+      
+      <Object Type="User" Name="Lookup Assigned Users by Employee Number" Update="False" Create="False" OutputField="AssignedUserID">
+        <Property Type="employeenumber" Name="Employee Number" Update="Do not blank" ValueType="Field Value" Value="Assigned user" UseForMatching="True" Length="128" />
+      </Object>
+      
+      <Object Type="Location" Name="Lookup Locations" Update="False" Create="True" OutputField="LocationID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Location" UseForMatching="True" Length="64" RegexSplit="/" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="LocationID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+
+      <Object Type="CorporateUnit" Name="Corporate Unit" Update="False" Create="True" UpdateRule="RejectDuplicateRecords" OutputField="CorporateUnitID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Corporate Unit" UseForMatching="True" Length="128" RegexSplit="/" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CorporateUnitID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />        
+      </Object>
+      
+			<Object Name="Lookup Assets by Serial Number" Type="Asset" Output="AssetToUpdateID" Update="False" Create="True">
+        <Property Type="serialnumber" Name="Serial Number" Update="Do not blank" ValueType="Field Value" Value="Serial number" OnMissingFieldValue="Remove Property" UseForMatching="True" Length="150"/>
+        <Property Type="ShortDescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Name" UseForMatching="False" Length="256" />				        
+			</Object>
+      
+			<Object Name="Lookup Assets by Asset Tag" Type="Asset" Output="AssetToUpdateID" Update="False" Create="True">
+				<Property Name="AssetTag" Type="AssetTag" Value="Asset Tag" ValueType="Field Value" OnMissingFieldValue="Remove Property" UseForMatching="True" />
+        <Property Type="ShortDescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Name" UseForMatching="False" Length="256" />
+			</Object>
+
+			<Object Name="Lookup Assets by Name and Asset Tag" Type="Asset" Output="AssetToUpdateID" Update="False" Create="True">
+        <Property Type="ShortDescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Name" UseForMatching="True" Length="256" />				
+				<Property Name="AssetTag" Type="AssetTag" Value="Asset Tag" ValueType="Field Value" UseForMatching="True" />
+			</Object>
+
+      <Object Type="Asset" Name="Create and Update Assets" Update="True" Create="True" OutputField="AssetID">
+				<Property Name="AssetID" Type="AssetID" Update="Never" Value="AssetToUpdateID" ValueType="Field Value" UseForMatching="True" UseNullValueForMatching="False" />   	
+        <Property Type="ShortDescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Name" Length="256" />
+        <Property Type="serialnumber" Name="Serial Number" Update="Do not blank" ValueType="Field Value" Value="Serial number" Length="150" />
+        <Property Type="assettype" Name="Asset Type" Update="Do not blank" ValueType="Field Value" Value="Asset type" Length="64" />
+        <Property Type="assettag" Name="Asset Tag" Update="Do not blank" ValueType="Field Value" Value="Asset Tag" Length="256" />
+        <Property Type="assetstatus" Name="Asset Status" Update="Do not blank" ValueType="Field Value" Value="Status" Length="100" />
+        <Property Type="manufacturer" Name="Manufacturer" Update="Do not blank" ValueType="Field Value" Value="Manufacturer" Length="100" />
+        <Property Type="modelno" Name="Model No" Update="Do not blank" ValueType="Field Value" Value="Model" Length="200" />
+        <Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="LocationID" Length="128" OnMissingFieldValue="Remove Object" />
+        <Property Type="businessunitid" Name="Corporate Unit ID" Update="Do not blank" ValueType="Field Value" Value="CorporateUnitID" Length="128" OnMissingFieldValue="Remove Property" />
+        <Property Type="assigntouserid" Name="Assigned To User ID" Update="Do not blank" ValueType="Field Value" Value="AssignedUserID" DataType="Integer" OnMissingFieldValue="Remove Property" />
+        <Property Type="retirementdate" Name="Retirement Date" Update="Do not blank" ValueType="Field Value" Value="Retirement Date" DataType="Date" />
+        <Property Type="endoflifereason" Name="Retirement Reason" Update="Do not blank" ValueType="Field Value" Value="Retirement Reason" Length="100" />
+        <Property Type="comments" Name="Comments" Update="Do not blank" ValueType="Field Value" Value="Information Field" OnMissingFieldValue="Remove Property" />
+        <Property Type="nbn-imei" Name="IMEI number:" Update="Do not blank" ValueType="Field Value" Value="Mobile IMEI" Length="512" IsCustomField="True" />
+        <Property Type="nbn-macaddress" Name="MAC Address:" Update="Do not blank" ValueType="Field Value" Value="Mac Address" Length="512" IsCustomField="True" />
+        <Property Type="nbn-phonenumber" Name="Phone number:" Update="Do not blank" ValueType="Field Value" Value="Phone Number" Length="512" IsCustomField="True" />
+        <Property Type="nbn-pin" Name="PIN:" Update="Do not blank" ValueType="Field Value" Value="Mobile PIN" Length="512" IsCustomField="True" />
+        <Property Type="nbn-puk" Name="PUK code:" Update="Do not blank" ValueType="Field Value" Value="Mobile PUK" Length="512" IsCustomField="True" />
+        <Property Type="nbn-remedynumber" Name="Remedy SRN:" Update="Do not blank" ValueType="Field Value" Value="Remedy SRN" Length="512" IsCustomField="True" />
+        <Property Type="nbn-sim" Name="SIM number:" Update="Do not blank" ValueType="Field Value" Value="Mobile SIM" Length="512" IsCustomField="True" />
+      </Object>
+
+      <!--
+        Copy data to phycical table
+      -->     
+      <Object Type="Custom" Name="Copy data to physical table" Query=" 
+        IF OBJECT_ID('dbo.[ECMImport_GenericAssets]', 'u') IS NOT NULL	  
+        DROP TABLE dbo.[ECMImport_GenericAssets]
+        
+        SELECT [AssetID],[Name],[Asset type],[Serial number],[Asset Tag],[Manufacturer],[Model],[AssetStatus],[AssetType],[Location],[Corporate Unit],[Status],[Retirement Reason],[Retirement Date],[Assigned user],[Mac Address],[Mobile IMEI],[Phone Number],[Mobile PIN],[Mobile PUK],[Remedy SRN],[Mobile SIM],[Information Field]
+        INTO dbo.[ECMImport_GenericAssets]
+        FROM #Assets
+      "/>
+      
+    </Import>
+  </Imports>
+</root>

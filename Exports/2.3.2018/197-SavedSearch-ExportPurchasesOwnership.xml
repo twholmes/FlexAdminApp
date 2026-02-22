@@ -1,0 +1,87 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="197" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportPurchasesOwnership</SearchName>
+    <Description>Export FNMS Purchases Ownership</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate purchase order details that user is allowed access
+	CREATE TABLE #PurchaseOrderDetailAllowed (PurchaseOrderDetailID int PRIMARY KEY)
+	INSERT  #PurchaseOrderDetailAllowed
+	SELECT  PurchaseOrderDetailID FROM TablePurchaseOrderDetailCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate purchase orders that user is allowed access
+	CREATE TABLE #PurchaseOrderAllowed (PurchaseOrderID int PRIMARY KEY)
+	INSERT  #PurchaseOrderAllowed SELECT * FROM TablePurchaseOrderCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for purchase order details
+                	SELECT  PurchaseOrderDetailInfo.PurchaseOrderDetailID AS [PurchaseOrderLineID],
+                        PurchaseOrderDetailInfo.ItemDescription AS [Description],
+                        PurchaseOrderDetailInfo.SequenceNumber AS [SequenceNumber],
+                        [BusinessOwnerV].PropertyValue AS [BusinessOwner],
+                        LocationLast.GroupName AS [LocationLast],
+                        Location.Path AS [Location],
+                        CorporateStructureLast.GroupName AS [CorporateStructureLast],
+                        CorporateStructure.Path AS [CorporateStructure],
+                        CostCenterLast.GroupName AS [CostCenterLast],
+                        CostCenter.Path AS [CostCenter],
+                        [R2_ec0911f37b315a3e135dcf5200be0e0b_PurchaseOrderDetailToPurchaseOrder_PurchaseOrderID],
+                        [R2_ec0911f37b315a3e135dcf5200be0e0b_PurchaseOrderDetailToPurchaseOrder_PurchaseOrderNumber],
+                			PurchaseOrderDetailInfo.PurchaseOrderID AS [PurchaseOrderID]
+                	FROM    PurchaseOrderDetailWithPONoSKUMatching AS PurchaseOrderDetailInfo
+                			-- Filter
+                			INNER JOIN #PurchaseOrderDetailAllowed AS filter ON filter.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                			-- Additional joins
+                			LEFT OUTER JOIN dbo.PurchaseOrderDetailProperty [BusinessOwnerT] ON ([BusinessOwnerT].PropertyName = 'BusinessOwner')
+                        LEFT OUTER JOIN dbo.PurchaseOrderDetailPropertyValue [BusinessOwnerV] ON ([BusinessOwnerV].PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID AND [BusinessOwnerV].PurchaseOrderDetailPropertyID = [BusinessOwnerT].PurchaseOrderDetailPropertyID)
+                        LEFT OUTER JOIN TableGroupExByLevel(1, NULL) AS LocationLast ON PurchaseOrderDetailInfo.PODetailLocationID = LocationLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS Location ON PurchaseOrderDetailInfo.PODetailLocationID = Location.GroupExID
+                        LEFT OUTER JOIN TableGroupExByLevel(2, NULL) AS CorporateStructureLast ON PurchaseOrderDetailInfo.PODetailBusinessUnitID = CorporateStructureLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS CorporateStructure ON PurchaseOrderDetailInfo.PODetailBusinessUnitID = CorporateStructure.GroupExID
+                        LEFT OUTER JOIN TableGroupExByLevel(3, NULL) AS CostCenterLast ON PurchaseOrderDetailInfo.PODetailCostCenterID = CostCenterLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS CostCenter ON PurchaseOrderDetailInfo.PODetailCostCenterID = CostCenter.GroupExID
+                        -- Link from PurchaseOrderDetail to Purchase Order
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for purchase orders
+                        				SELECT  PurchaseOrder.PurchaseOrderID AS [R2_ec0911f37b315a3e135dcf5200be0e0b_PurchaseOrderDetailToPurchaseOrder_PurchaseOrderID],
+                        			        PurchaseOrder.PurchaseOrderNo AS [R2_ec0911f37b315a3e135dcf5200be0e0b_PurchaseOrderDetailToPurchaseOrder_PurchaseOrderNumber]
+                        				FROM    PurchaseOrder
+                        						-- Filter
+                        						INNER JOIN #PurchaseOrderAllowed AS filter ON filter.PurchaseOrderID = PurchaseOrder.PurchaseOrderID
+                        						-- Additional joins
+                        	) AS PurchaseOrderDetailToPurchaseOrder ON PurchaseOrderDetailToPurchaseOrder.R2_ec0911f37b315a3e135dcf5200be0e0b_PurchaseOrderDetailToPurchaseOrder_PurchaseOrderID = PurchaseOrderDetailInfo.PurchaseOrderID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   [Description] LIKE '%' + words.Word + '%' ESCAPE '\'
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

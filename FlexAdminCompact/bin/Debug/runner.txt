@@ -1,0 +1,35 @@
+Copyright (c)2019 Crayon Australia
+FlexAdminCompact Application ReadMe
+
+Revision History:
+1.0.0.0  Initial Revision  Trevor Holmes 05.12.2019
+
+Overview
+The FlexAdmin application can be used to run any standalone PowerShell (.ps1) or SQL (.sql) script.
+Script source can be either a default (embedded) script or any script file dropped onto the app main app window.
+Script execution is initiated by clicking on the RUN button in on the main app window.
+
+A log file is written to record application execution histories.
+FlexAdmin support self recompilation from the Advanced Menu to allow you to update the currently embedded scripts.
+
+Main Operation
+1. If script or content have not previously been unpacked, click on the UNPACK button to wite files to the selected working folder
+2. Enter a target option (keyword) into the  editbox
+3. (optionally) check the "redirect" checkbox to redirect run results and messages to a runlog file instead of displaying a shell dialog
+4. Click RUN to execute select FlexAdmin target
+5. The FlexAdmin script will begin execution in a new shell window (if not redirected)
+6. Click "return" at the shell window Pause prompt to complete script exection
+7. Repeat to execute other targets, or click on the Exit button to quit the app
+
+Help
+1. Click on the app menu Help menu item, or ? menu button to open this readme file
+
+Run source from local, temp, or ImplFiles folders
+1. Click on the app menu Settings -> Local (or) Temp (or) ImplFiles to set the working folder context
+2. If Temp (folder) is selected, then script source will be cleaned up at the when the app is closed
+3. (optional) Click on the app menu Application -> GoTo Folder menu item to open a Explorer window at the working folder 
+
+Settings
+1. Click on the app menu Settings -> Settings ... menu item to open the app's Setting dialog
+2. Settings include SQL ConnectionString options
+3. Setting are persisted

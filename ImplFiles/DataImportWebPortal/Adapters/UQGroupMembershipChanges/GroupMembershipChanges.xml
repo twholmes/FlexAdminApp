@@ -1,0 +1,144 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="GroupMembershipChanges" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=GroupMembershipChanges.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+      Query="select * from [Changes$]" 
+      UsePhysicalTable="True" 
+      datatablename="ECMImport_GroupMembershipChanges"
+      >
+
+    <!--
+      Asset Record Updates
+    -->
+    <Object Type="Custom" Name="Asset Record Updates" Query="
+      UPDATE [dbo].[Asset_MT]
+      SET [BusinessUnitID] = chng.NewGroupExID
+      FROM
+      (
+        SELECT     
+          gmc.[ObjectID]
+          ,gmc.[Object]
+          ,gmc.[Name]      
+          ,gex.[GroupExID]
+          ,gex.[GroupID]
+          ,gmc.[GroupPath]
+          ,ngex.[GroupExID] as [NewGroupExID]  
+          ,ngex.[GroupID] as [NewGroupID]          
+          ,gmc.[NewPath]
+        FROM [dbo].[ECMImport_GroupMembershipChanges] AS gmc
+        JOIN [dbo].[GroupEx] as gex ON gmc.[GroupPath] = gex.[Path]   
+        JOIN [dbo].[GroupEx] as ngex ON gmc.[NewPath] = ngex.[Path]
+        WHERE gmc.[Object] = 'Asset'
+      ) AS chng 
+      WHERE [Asset_MT].[AssetID] = chng.[ObjectID]
+    "/>
+
+    <!--
+      Contract Record Updates
+    -->
+    <Object Type="Custom" Name="Contract Record Updates" Query="
+      UPDATE [dbo].[Contract_MT]
+      SET [BusinessUnitID] = chng.NewGroupExID
+      FROM
+      (
+        SELECT     
+          gmc.[ObjectID]
+          ,gmc.[Object]
+          ,gmc.[Name]      
+          ,gex.[GroupExID]
+          ,gex.[GroupID]
+          ,gmc.[GroupPath]
+          ,ngex.[GroupExID] as [NewGroupExID]  
+          ,ngex.[GroupID] as [NewGroupID]          
+          ,gmc.[NewPath]
+        FROM [dbo].[ECMImport_GroupMembershipChanges] AS gmc
+        JOIN [dbo].[GroupEx] as gex ON gmc.[GroupPath] = gex.[Path]   
+        JOIN [dbo].[GroupEx] as ngex ON gmc.[NewPath] = ngex.[Path]
+        WHERE gmc.[Object] = 'Contract'      
+      ) AS chng 
+      WHERE [Contract_MT].[ContractID] = chng.[ObjectID]
+    "/>
+
+    <!--
+      License Record Updates
+    -->
+    <Object Type="Custom" Name="Software License Record Updates" Query="
+      UPDATE [dbo].[SoftwareLicense_MT]
+      SET [BusinessUnitID] = chng.NewGroupExID
+      FROM
+      (
+        SELECT     
+          gmc.[ObjectID]
+          ,gmc.[Object]
+          ,gmc.[Name]      
+          ,gex.[GroupExID]
+          ,gex.[GroupID]
+          ,gmc.[GroupPath]
+          ,ngex.[GroupExID] as [NewGroupExID]  
+          ,ngex.[GroupID] as [NewGroupID]          
+          ,gmc.[NewPath]
+        FROM [dbo].[ECMImport_GroupMembershipChanges] AS gmc
+        JOIN [dbo].[GroupEx] as gex ON gmc.[GroupPath] = gex.[Path]   
+        JOIN [dbo].[GroupEx] as ngex ON gmc.[NewPath] = ngex.[Path]
+        WHERE gmc.[Object] = 'License'      
+      ) AS chng 
+      WHERE [SoftwareLicense_MT].[SoftwareLicenseID] = chng.[ObjectID]
+    "/>
+
+    <!--
+      PurchaseOrder Record Updates
+    -->
+    <Object Type="Custom" Name="Purchase Order Record Updates" Query="
+      UPDATE [dbo].[PurchaseOrder_MT]
+      SET [BusinessUnitID] = chng.NewGroupExID
+      FROM
+      (
+        SELECT     
+          gmc.[ObjectID]
+          ,gmc.[Object]
+          ,gmc.[Name]      
+          ,gex.[GroupExID]
+          ,gex.[GroupID]
+          ,gmc.[GroupPath]
+          ,ngex.[GroupExID] as [NewGroupExID]  
+          ,ngex.[GroupID] as [NewGroupID]          
+          ,gmc.[NewPath]
+        FROM [dbo].[ECMImport_GroupMembershipChanges] AS gmc
+        JOIN [dbo].[GroupEx] as gex ON gmc.[GroupPath] = gex.[Path]   
+        JOIN [dbo].[GroupEx] as ngex ON gmc.[NewPath] = ngex.[Path]
+        WHERE gmc.[Object] = 'PurchaseOrder'      
+      ) AS chng 
+      WHERE [PurchaseOrder_MT].[PurchaseOrderID] = chng.[ObjectID]
+    "/>
+
+    <!--
+      PurchaseOrderDetail Record Updates
+    -->
+    <Object Type="Custom" Name="Purchase Order Detail Record Updates" Query="
+      UPDATE [dbo].[PurchaseOrderDetail_MT]
+      SET [BusinessUnitID] = chng.NewGroupExID
+      FROM
+      (
+        SELECT     
+          gmc.[ObjectID]
+          ,gmc.[Object]
+          ,gmc.[Name]      
+          ,gex.[GroupExID]
+          ,gex.[GroupID]
+          ,gmc.[GroupPath]
+          ,ngex.[GroupExID] as [NewGroupExID]  
+          ,ngex.[GroupID] as [NewGroupID]          
+          ,gmc.[NewPath]
+        FROM [dbo].[ECMImport_GroupMembershipChanges] AS gmc
+        JOIN [dbo].[GroupEx] as gex ON gmc.[GroupPath] = gex.[Path]   
+        JOIN [dbo].[GroupEx] as ngex ON gmc.[NewPath] = ngex.[Path]
+        WHERE gmc.[Object] = 'PurchaseOrderDetail'      
+      ) AS chng 
+      WHERE [PurchaseOrderDetail_MT].[PurchaseOrderDetailID] = chng.[ObjectID]
+    "/>
+
+    </Import>
+  </Imports>
+</root>

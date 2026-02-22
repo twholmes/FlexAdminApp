@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+    <Import Type="Excel" Name="CostCenters" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-CostCenters-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+    	Query="select * from [CostCenters$]"
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="(ISNULL([Fund], '&lt;NULL&gt;') + '/' + ISNULL([Dept], '&lt;NULL&gt;'))" 
+      CleanUpControlCharOn="" 
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_CostCenters" 
+    >
+
+    <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+      
+    <Object Type="Custom" Name="Add Columns" Query="      
+      IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_CostCenters' AND column_name = 'Path')
+      ALTER TABLE dbo.[ECMImport_CostCenters] ADD [Path] nvarchar(200)
+    "/>
+ 
+    <!--
+      Initialise View Definitions
+    -->      
+    <Object Type="Custom" Name="Initialise View Definitions" Query="          	
+      UPDATE dbo.[ECMImport_CostCenters]
+      SET [Path] = 'ANU/' + REPLACE(ISNULL([Fund], 'unknown'), '/', '') + '/' + REPLACE(ISNULL([Dept], 'unknown'), '/', '')
+      WHERE [Project] is null or [Project] = ''
+
+      UPDATE dbo.[ECMImport_CostCenters]
+      SET [Path] = 'ANU/' + REPLACE(ISNULL([Fund], 'unknown'), '/', '') + '/' + REPLACE(ISNULL([Dept], 'unknown'), '/', '') + '/' + REPLACE([Project], '/', '')
+      WHERE [Project] is not null and [Project] != ''
+    "/>
+
+    <Object Type="CostCenter" Name="Cost Center" Update="True" Create="True" OutputField="CostCenter_ID">
+      <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Path" UseForMatching="True" Length="128" RegexSplit="/" />
+      <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CostCenter_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />      
+      <Property Type="address_city" Name="Address - City" Update="Do not blank" ValueType="Fixed Value" Value="Canberra" Length="200" />
+      <Property Type="comments" Name="Description" Update="Do not blank" ValueType="Field Value" Value="Long Descr" />
+    </Object>
+
+	  </Import>
+  </Imports>
+</root>

@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomViewTypes>
+  <CustomViewType Exclude="" Action="drop">
+    <TypeName>ComputerLicenseExemptions</TypeName>
+    <Description>Reports license exemptions on computers</Description>
+    <QueryName>cv_ComputerLicenseExemptions</QueryName>    
+    <QuerySQL/>
+    <QueryFilter/>
+    <QueryTemplate/>
+    <SearchTypeColumns/>
+  </CustomViewType>
+</CustomViewTypes>

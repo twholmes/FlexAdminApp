@@ -1,0 +1,149 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="175" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportDocumentList</SearchName>
+    <Description>Export FNMS Linked Documents.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT * FROM
+  (
+    SELECT
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'Unlinked' as [ObjectType]  
+       ,0 as [ObjectID]            
+       ,'' as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+    WHERE di.[AssetID] is NULL and di.[PurchaseOrderID] is NULL and di.[PurchaseOrderDetailID] is NULL and di.[ContractID] is NULL and di.[SoftwareLicenseID] is NULL and di.[ComplianceUserID] is NULL
+    
+    UNION
+             
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'Asset' as [ObjectType]  
+       ,di.[AssetID] as [ObjectID]            
+       ,a.[ShortDescription] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[Asset] as a on a.[AssetID] = di.[AssetID]
+    WHERE di.[AssetID] is not NULL       
+    
+    UNION
+    
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'PurchaseOrder' as [ObjectType]  
+       ,di.[PurchaseOrderID] as [ObjectID]            
+       ,po.[PurchaseOrderNo] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[PurchaseOrder] as po on po.[PurchaseOrderID] = di.[PurchaseOrderID]
+    WHERE di.[PurchaseOrderID] is not NULL       
+    
+    UNION
+    
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'PurchaseOrderDetail' as [ObjectType]  
+       ,di.[PurchaseOrderDetailID] as [ObjectID]            
+       ,pod.[ItemDescription] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[PurchaseOrderDetail] as pod on pod.[PurchaseOrderDetailID] = di.[PurchaseOrderDetailID]
+    WHERE di.[PurchaseOrderDetailID] is not NULL
+    
+    UNION
+    
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'Contract' as [ObjectType]  
+       ,di.[ContractID] as [ObjectID]            
+       ,c.[ContractNo] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[Contract] as c on c.[ContractID] = di.[ContractID]
+    WHERE di.[ContractID] is not NULL      
+    
+    UNION
+    
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'SoftwareLicense' as [ObjectType]  
+       ,di.[SoftwareLicenseID] as [ObjectID]            
+       ,sl.[Name] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[SoftwareLicense] as sl on sl.[SoftwareLicenseID] = di.[SoftwareLicenseID]
+    WHERE di.[SoftwareLicenseID] is not NULL      
+    
+    UNION
+    
+    SELECT 
+      di.[DocumentID]
+       ,di.[DocumentTypeID]
+       ,di.[DocumentTypeDefaultValue] AS [DocumentType]
+       ,di.[DocumentName]
+       ,di.[DocumentPath]
+       ,di.[DocumentDescription]
+       ,di.[PhysicalLocation]
+       ,di.[DocumentSize]
+       ,'ComplianceUser' as [ObjectType]  
+       ,di.[ComplianceUserID] as [ObjectID]            
+       ,cu.[UserName] as [ObjectRef]         
+       ,di.[AttachDate]
+       ,di.[UserName]
+    FROM [dbo].[DocumentInfo] as di
+      JOIN [dbo].[ComplianceUser] as cu on cu.[ComplianceUserID] = di.[ComplianceUserID]
+    WHERE di.[ComplianceUserID] is not NULL      
+  ) as docs
+]]></SearchSQL>
+  </Report>
+</CustomReports>

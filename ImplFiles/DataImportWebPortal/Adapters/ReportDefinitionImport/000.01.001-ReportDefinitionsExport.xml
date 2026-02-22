@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7195" SearchName="ReportDefinitionsExport" ComplianceSearchType="Custom" ComplianceSearchFolderID="2867" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>This view shows the definitions of all reports.</Description>
+    <FolderPath>Automation Views</FolderPath>
+    <CreationDate>31/01/2020</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+       SELECT  
+          ss.[ComplianceSavedSearchID]
+          ,ss.[SearchName]
+          ,ss.[Description]
+          ,dbo.CustomBase64Encode(ss.[SearchSQL])as [EncodedSearchSQL]
+          ,dbo.CustomBase64Encode(CONVERT(nvarchar(max),ss.[SearchMapping])) AS [EncodedSearchMapping]
+          ,dbo.CustomBase64Encode(CONVERT(nvarchar(max),ss.[SearchXML])) AS [EncodedSearchXML]
+          ,ss.[CreationDate]
+          ,ss.[ComplianceSearchTypeID]
+          ,ss.[ComplianceSearchFolderID]
+          --,csf.[Name] AS [FolderFullName]
+          --,rsct.[ResourceValue] AS [FolderName]
+          ,dbo.CustomGetFullFolderPath(ss.[ComplianceSearchFolderID]) AS [FullFolderName]
+          ,ss.[CreatedByOperatorID]
+          ,ss.[RestrictedAccessTypeID]
+          ,ss.[CanDelete]
+        FROM [dbo].[ComplianceSavedSearch_MT] AS ss
+          JOIN [dbo].[ComplianceSearchFolder_MT] as csf ON csf.ComplianceSearchFolderID = ss.ComplianceSearchFolderID
+          --JOIN [dbo].[ResourceStringCultureType] as rsct on rsct.[ResourceString] = csf.NameResourceName AND rsct.CultureType = 'en-US'
+        WHERE ss.ComplianceSearchTypeID > 0 and ss.ComplianceSavedSearchSystemID is NULL
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

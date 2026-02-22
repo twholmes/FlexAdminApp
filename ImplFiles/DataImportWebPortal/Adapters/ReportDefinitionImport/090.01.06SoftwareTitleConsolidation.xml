@@ -1,0 +1,467 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7200" SearchName="090.01.06 Software Title Consolidation" ComplianceSearchType="License" ComplianceSearchFolderID="2862" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Functionality identifying software applications by type and by license status. Supports contractual obligation for product consolidation and rationalization recommendations
+    </Description>
+    <FolderName>Management Views/BOQ</FolderName>
+    <CreationDate>11/12/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate software titles that user is allowed access
+	CREATE TABLE #SoftwareTitleAllowed (SoftwareTitleID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'list')) = 1
+	BEGIN
+			INSERT  #SoftwareTitleAllowed SELECT SoftwareTitleID FROM SoftwareTitle
+	END
+
+-- Pre-calculate installed software that user is allowed access
+	CREATE TABLE #InstalledSoftwareAllowedComputer (ComplianceComputerID int PRIMARY KEY)
+
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'read')) = 1
+	BEGIN
+		INSERT	#InstalledSoftwareAllowedComputer
+		SELECT	tcc.ComplianceComputerID
+		FROM	TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL) tcc
+	END
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicense.Edition AS [Edition],
+                        SoftwareLicense.Version AS [Version],
+                        Publisher.VendorName AS [PublisherName],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        SoftwareLicenseMetricI18N.DefaultValue AS [Metric],
+                        ProductPrimary.ProductName AS [ProductName],
+                        Vendor.VendorName AS [VendorName],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationID],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationName],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationVersion],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Edition],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Classification],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Category],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfInstallations],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ProductName],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Publisher],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsageActiveTime],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsagePeriod],
+                        [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfUsedInstallations]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+                        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN SoftwareLicenseMetricI18N ON SoftwareLicenseMetricI18N.SoftwareLicenseMetricID = SoftwareLicense.SoftwareLicenseMetricID
+                        LEFT OUTER JOIN (SELECT slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS ProductName FROM (SELECT slp_inner.SoftwareLicenseID, MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID) ProductPrimary ON ProductPrimary.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN Vendor ON Vendor.VendorID = SoftwareLicense.VendorID
+                        -- Link from License to Applications via SoftwareTitleLicense table
+                        	LEFT OUTER JOIN (
+                        			SELECT  SoftwareTitleLicense.SoftwareLicenseID,
+                        					SoftwareTitle.*
+                        			FROM    SoftwareTitleLicense
+                        					INNER JOIN (
+                        							-- Custom view query for software titles
+                        								SELECT  SoftwareTitle.SoftwareTitleID AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationID],
+                        							        SoftwareTitle.FullName AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationName],
+                        							        SoftwareTitleVersion.VersionName AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationVersion],
+                        							        ISNULL(Edition.EditionName, '') AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Edition],
+                        							        SoftwareTitleClassificationI18N.DefaultValue AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Classification],
+                        							        Category.Path AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Category],
+                        							        ISNULL(NumberOfInstallationsCount.NumberOfInstallations, 0) AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfInstallations],
+                        							        Product.ProductName AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ProductName],
+                        							        SoftwareTitlePublisher.PublisherName AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Publisher],
+                        							        SoftwareTitle.UsageActiveTime AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsageActiveTime],
+                        							        SoftwareTitle.UsagePeriod AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsagePeriod],
+                        							        ISNULL(NumberOfUsedInstallationsCount.NumberOfUsedInstallations, 0) AS [R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfUsedInstallations]
+                        								FROM    SoftwareTitle
+                        										-- Filter
+                        										INNER JOIN #SoftwareTitleAllowed AS filter ON filter.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        							        LEFT OUTER JOIN SoftwareTitleEdition AS Edition ON SoftwareTitle.SoftwareTitleEditionID = Edition.SoftwareTitleEditionID
+                        							        LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID
+                        							        LEFT OUTER JOIN Category AS Category ON SoftwareTitle.CategoryID = Category.GroupExID
+                        							        LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN (SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID) AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID GROUP BY InstalledSoftware.SoftwareTitleID) AS NumberOfInstallationsCount ON NumberOfInstallationsCount.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        							        LEFT OUTER JOIN SoftwareTitleProduct AS Product ON SoftwareTitle.SoftwareTitleProductID = Product.SoftwareTitleProductID
+                        							        INNER JOIN SoftwareTitleProduct ON SoftwareTitle.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID
+                        							        LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfUsedInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN (SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID) AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID AND InstalledSoftware.IsUsed = 1 GROUP BY InstalledSoftware.SoftwareTitleID) AS NumberOfUsedInstallationsCount ON NumberOfUsedInstallationsCount.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        					) AS SoftwareTitle ON SoftwareTitle.R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationID = SoftwareTitleLicense.SoftwareTitleID
+                        	) AS LicenseToApplication ON LicenseToApplication.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Version] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+      
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14909" ColumnName="License.SoftwareLicenseID" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareLicenseID" SelectName="SoftwareLicense.SoftwareLicenseID" WhereClause="SoftwareLicense.SoftwareLicenseID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Licenses" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="LicenseType" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>SoftwareLicenseID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14910" ColumnName="License.Name" ColumnNameResourceName="ComplianceSearchTypeColumn.Name" SelectName="SoftwareLicense.Name" WhereClause="SoftwareLicense.Name" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Licenses" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>0</Index>
+    <FieldName>Name</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15492" ColumnName="License.Edition" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseEdition" SelectName="SoftwareLicense.Edition" WhereClause="SoftwareLicense.Edition" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>9</Index>
+    <FieldName>Edition</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14911" ColumnName="License.Version" ColumnNameResourceName="ComplianceSearchTypeColumn.Version" SelectName="SoftwareLicense.Version" WhereClause="SoftwareLicense.Version" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>18</Index>
+    <FieldName>Version</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14917" ColumnName="License.PublisherName" ColumnNameResourceName="ComplianceSearchTypeColumn.PublisherName" FromTable="LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID" SelectName="Publisher.VendorName" WhereClause="Publisher.VendorName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>1</Index>
+    <FieldName>PublisherName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14912" ColumnName="License.LicenseType" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseType" FromTable="LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID" SelectName="SoftwareLicenseTypeI18N.TypeDefaultValue" WhereClause="SoftwareLicenseTypeI18N.SoftwareLicenseTypeID" SelectOptionsSQL="SELECT DISTINCT SoftwareLicenseTypeID AS [ID], TypeResourceName AS ResourceName, TypeDefaultValue AS DefaultName from dbo.SoftwareLicenseTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>2</Index>
+    <FieldName>LicenseType</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15372" ColumnName="License.Metric" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseMetric" FromTable="LEFT OUTER JOIN SoftwareLicenseMetricI18N ON SoftwareLicenseMetricI18N.SoftwareLicenseMetricID = SoftwareLicense.SoftwareLicenseMetricID" SelectName="SoftwareLicenseMetricI18N.DefaultValue" WhereClause="SoftwareLicenseMetricI18N.SoftwareLicenseMetricID" SelectOptionsSQL="SELECT slm.SoftwareLicenseMetricID AS [ID], slm.MetricResourceName AS ResourceName, slm.MetricDefaultValue + N' (' + slm.TypeDefaultValue + N')' AS DefaultName FROM SoftwareLicenseMetricWithTypeI18N slm" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>10</Index>
+    <FieldName>Metric</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14823" ColumnName="License.ProductName" ColumnNameResourceName="ComplianceSearchTypeColumn.ProductPrimary" FromTable="LEFT OUTER JOIN (SELECT slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS ProductName FROM (SELECT slp_inner.SoftwareLicenseID, MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID) {NAMESPACE}ProductPrimary ON {NAMESPACE}ProductPrimary.SoftwareLicenseID = {NAMESPACE}SoftwareLicense.SoftwareLicenseID" SelectName="ProductPrimary.ProductName" WhereClause="ProductPrimary.ProductName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>12</Index>
+    <FieldName>ProductName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14916" ColumnName="License.VendorName" ColumnNameResourceName="ComplianceSearchTypeColumn.Vendor" FromTable="LEFT OUTER JOIN Vendor ON Vendor.VendorID = SoftwareLicense.VendorID" SelectName="Vendor.VendorName" WhereClause="Vendor.VendorName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>17</Index>
+    <FieldName>VendorName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15385" ColumnName="License.ParentLicenseID" ColumnNameResourceName="ComplianceSearchTypeColumn.ParentLicenseID" SelectName="SoftwareLicense.ParentLicenseID" WhereClause="SoftwareLicense.ParentLicenseID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>ParentLicenseID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15068" ColumnName="SoftwareTitle.ApplicationID" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationID" SelectName="SoftwareTitle.SoftwareTitleID" WhereClause="SoftwareTitle.SoftwareTitleID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Applications" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15069" ColumnName="SoftwareTitle.ApplicationName" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationName" SelectName="SoftwareTitle.FullName" WhereClause="SoftwareTitle.FullName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Applications" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>3</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15070" ColumnName="SoftwareTitle.ApplicationVersion" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationVersion" FromTable="LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID" SelectName="SoftwareTitleVersion.VersionName" WhereClause="SoftwareTitleVersion.VersionName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>4</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ApplicationVersion</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15076" ColumnName="SoftwareTitle.Edition" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareTitleEdition" FromTable="LEFT OUTER JOIN SoftwareTitleEdition AS Edition ON SoftwareTitle.SoftwareTitleEditionID = Edition.SoftwareTitleEditionID" SelectName="ISNULL(Edition.EditionName, '')" WhereClause="Edition.EditionName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>5</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Edition</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15072" ColumnName="SoftwareTitle.Classification" ColumnNameResourceName="ComplianceSearchTypeColumn.Classification" FromTable="LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID" SelectName="SoftwareTitleClassificationI18N.DefaultValue" WhereClause="SoftwareTitleClassificationI18N.SoftwareTitleClassificationID" SelectOptionsSQL="SELECT DISTINCT SoftwareTitleClassificationID AS [ID], ResourceName, DefaultValue AS DefaultName from dbo.SoftwareTitleClassificationI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>6</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Classification</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15667" ColumnName="SoftwareTitle.Category" ColumnNameResourceName="ComplianceSearchTypeColumn.Category" FromTable="LEFT OUTER JOIN Category AS Category ON SoftwareTitle.CategoryID = Category.GroupExID" SelectName="Category.Path" WhereClause="Category.GroupExID" SelectOptionsSQL="SELECT DISTINCT g.GroupExID AS [ID],'' AS ResourceName, g.Path AS DefaultName FROM Category AS g JOIN TableGetAccessibleGroups('CMEnterprise','read') as a ON a.GroupExID = g.GroupExID WHERE a.GroupTypeID = 4 AND g.BusinessView = 0 AND a.UserHasAccess=1 ORDER BY Path" FilterGroupType="5" DefaultFilterType="3" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>7</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Category</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15074" ColumnName="SoftwareTitle.NumberOfInstallations" ColumnNameResourceName="ComplianceSearchTypeColumn.NumberOfInstallations" FromTable="LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN {RELATION_FILTER|ApplicationToInstallation|#{FILTERNAMESPACE}InstalledSoftwareFilter|(SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID)} AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID GROUP BY InstalledSoftware.SoftwareTitleID) AS {NAMESPACE}NumberOfInstallationsCount ON {NAMESPACE}NumberOfInstallationsCount.SoftwareTitleID = {NAMESPACE}SoftwareTitle.SoftwareTitleID" SelectName="ISNULL(NumberOfInstallationsCount.NumberOfInstallations, 0)" WhereClause="ISNULL(NumberOfInstallationsCount.NumberOfInstallations, 0)" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" RequiresSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>8</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfInstallations</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15075" ColumnName="SoftwareTitle.ProductName" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareTitleProductName" FromTable="LEFT OUTER JOIN SoftwareTitleProduct AS Product ON SoftwareTitle.SoftwareTitleProductID = Product.SoftwareTitleProductID" SelectName="Product.ProductName" WhereClause="Product.ProductName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>11</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_ProductName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15071" ColumnName="SoftwareTitle.Publisher" ColumnNameResourceName="ComplianceSearchTypeColumn.Publisher" FromTable="INNER JOIN SoftwareTitleProduct ON SoftwareTitle.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID" SelectName="SoftwareTitlePublisher.PublisherName" WhereClause="SoftwareTitlePublisher.PublisherName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>13</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_Publisher</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15663" ColumnName="SoftwareTitle.UsageActiveTime" ColumnNameResourceName="ComplianceSearchTypeColumn.UsageActiveTime" SelectName="SoftwareTitle.UsageActiveTime" WhereClause="SoftwareTitle.UsageActiveTime" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>14</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsageActiveTime</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15664" ColumnName="SoftwareTitle.UsagePeriod" ColumnNameResourceName="ComplianceSearchTypeColumn.UsagePeriod" SelectName="SoftwareTitle.UsagePeriod" WhereClause="SoftwareTitle.UsagePeriod" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>15</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_UsagePeriod</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14836" ColumnName="SoftwareTitle.NumberOfUsedInstallations" ColumnNameResourceName="ComplianceSearchTypeColumn.NumberOfUsedInstallations" FromTable="LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfUsedInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN {RELATION_FILTER|ApplicationToInstallation|#{FILTERNAMESPACE}InstalledSoftwareFilter|(SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID)} AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID AND InstalledSoftware.IsUsed = 1 GROUP BY InstalledSoftware.SoftwareTitleID) AS {NAMESPACE}NumberOfUsedInstallationsCount ON {NAMESPACE}NumberOfUsedInstallationsCount.SoftwareTitleID = {NAMESPACE}SoftwareTitle.SoftwareTitleID" SelectName="ISNULL(NumberOfUsedInstallationsCount.NumberOfUsedInstallations, 0)" WhereClause="ISNULL(NumberOfUsedInstallationsCount.NumberOfUsedInstallations, 0)" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" RequiresSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>16</Index>
+    <FieldName>R2_d60017f3d20cd63000a729df5ffb54d1_LicenseToApplication_NumberOfUsedInstallations</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>LicenseToApplication</RelationName>
+    <RelationPath>LicenseToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+</ArrayOfCustomViewColumnMapping>
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+<customview>
+  <!--Custom view properties-->
+  <name>090.01.06 Software Title Consolidation</name>
+  <description>Functionality identifying software applications by type and by license status. Supports contractual obligation for product consolidation and rationalization recommendations
+</description>
+  <schemaVersion>2.0</schemaVersion>
+  <productVersion>13.1.1</productVersion>
+  <!--Master custom view object-->
+  <object name="License" major="true">
+    <column index="0" name="License.Name" show="true" match="PartialMatch" />
+    <column index="1" name="License.PublisherName" show="true" match="Excluded" />
+    <column index="2" name="License.LicenseType" show="true" match="Excluded" />
+    <column index="9" name="License.Edition" show="false" match="PartialMatch" />
+    <column index="10" name="License.Metric" show="false" match="Excluded" />
+    <column index="12" name="License.ProductName" show="false" match="Excluded" />
+    <column index="17" name="License.VendorName" show="false" match="Excluded" />
+    <column index="18" name="License.Version" show="false" match="PartialMatch" />
+    <!--Linked LicenseToApplication-->
+    <relation name="LicenseToApplication">
+      <object name="SoftwareTitle" major="true">
+        <column index="3" name="SoftwareTitle.ApplicationName" show="true" match="PartialMatch" />
+        <column index="4" name="SoftwareTitle.ApplicationVersion" show="true" match="Excluded" />
+        <column index="5" name="SoftwareTitle.Edition" show="true" match="Excluded" />
+        <column index="6" name="SoftwareTitle.Classification" show="true" match="Excluded" />
+        <column index="7" name="SoftwareTitle.Category" show="true" match="Excluded" />
+        <column index="8" name="SoftwareTitle.NumberOfInstallations" show="true" match="Excluded" />
+        <column index="11" name="SoftwareTitle.ProductName" show="false" match="Excluded" />
+        <column index="13" name="SoftwareTitle.Publisher" show="false" match="Excluded" />
+        <column index="14" name="SoftwareTitle.UsageActiveTime" show="false" match="Excluded" />
+        <column index="15" name="SoftwareTitle.UsagePeriod" show="false" match="Excluded" />
+        <column index="16" name="SoftwareTitle.NumberOfUsedInstallations" show="false" match="Excluded" />
+      </object>
+    </relation>
+  </object>
+</customview>
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

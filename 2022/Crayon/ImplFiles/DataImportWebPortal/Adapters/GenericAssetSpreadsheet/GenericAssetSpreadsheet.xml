@@ -1,0 +1,215 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+		<Import Type="Excel" 
+				Name="Assets" 
+				Template="" 
+				Enabled="False" 
+				ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-GenericAssetSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+				Query="select * from [Assets$]" 
+				TraceActions="created,deleted,updated,rejected" 
+				TraceFields="[Serial Number]" 
+				datatablename="#Assets">
+			<Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+			<Object Type="Custom" Name="Validate Source Data" TimeOut="-1" Query="
+				DECLARE @ImportObjectID INT
+				EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+				DECLARE @Rule NVARCHAR(1024)
+
+				/* Validate operator can create records */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@IsGlobalRule = 1,
+					@ValidationRule = '
+						NOT EXISTS(
+							SELECT 1
+							FROM dbo.RightsHasAccess(''CMAssets'', ''create'')
+							WHERE HasAccess = 1
+						)
+					',
+					@ErrorMessage = 'You require rights to create assets to import this data'
+
+				/* Validate records to be updated are updatable by the operator */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = '
+						source.[@SourceColumn1Name@] != ''''
+						AND EXISTS ( /* Record exists */
+							SELECT	1
+							FROM	dbo.Asset a
+							WHERE	a.SerialNumber = source.[@SourceColumn1Name@]
+									AND NOT EXISTS( /* But user does not have access to modify it */
+										SELECT	1
+										FROM	dbo.TableAssetCurrentUser(NULL, ''modify'', NULL, NULL) aMod
+										WHERE	aMod.AssetID = a.AssetID
+									)
+						)
+					',
+					@ErrorMessage = 'You do not have rights to make changes to the existing asset',
+					@SourceColumn1Name = 'Serial Number'
+
+				/* Validate that values are provided in mandatory columns */
+				EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'Serial Number'
+
+				/* Validate that list values are valid */
+
+				/* Validate list values */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = '
+						source.[@SourceColumn1Name@] != ''''
+						AND NOT EXISTS(
+							SELECT 1
+							FROM dbo.ResourceStringCultureType rsct
+								JOIN dbo.AssetType list ON list.AssetTypeResourceName = rsct.ResourceString
+							WHERE rsct.ResourceValue = source.[@SourceColumn1Name@]
+						)
+					',
+					@ErrorMessage = 'Invalid @SourceColumn1Name@ [@SourceColumn1Value@]',
+					@SourceColumn1Name = 'Asset Type'
+
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = '
+						source.[@SourceColumn1Name@] != ''''
+						AND NOT EXISTS(
+							SELECT 1
+							FROM dbo.ResourceStringCultureType rsct
+								JOIN dbo.AssetStatus list ON list.StatusResourceName = rsct.ResourceString
+							WHERE rsct.ResourceValue = source.[@SourceColumn1Name@]
+						)
+					',
+					@ErrorMessage = 'Invalid @SourceColumn1Name@ [@SourceColumn1Value@]',
+					@SourceColumn1Name = 'Status'
+
+				/* Some columns are only mandatory when creating records (they can be blank for existing records) */
+				SET @Rule = '
+						NOT EXISTS(SELECT 1 FROM dbo.Asset a WHERE a.SerialNumber = source.[Serial Number]) /* Asset to be created */
+						AND ISNULL(LTRIM(RTRIM(source.[@SourceColumn1Name@])), '''') = '''' /* Mandatory field for new records not provided */
+					'
+
+				EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, '@SourceColumn1Name@ must be specified for new records', 'Name'
+				EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, '@SourceColumn1Name@ must be specified for new records', 'Asset Type'
+
+				/* ID values must be unique in the source data */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = '
+						source.[@SourceColumn1Name@] != ''''
+						AND EXISTS(SELECT 1 FROM #Assets alt WHERE alt.[@SourceColumn1Name@] = source.[@SourceColumn1Name@] AND alt.RowNumber &gt; source.RowNumber)
+					',
+					@ErrorMessage = '@SourceColumn1Name@ [@SourceColumn1Value@] is not unique in source data',
+					@SourceColumn1Name = 'Serial Number'
+
+				/* Each source record must map to no more than one target record */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = '
+						source.[@SourceColumn1Name@] != ''''
+						AND (SELECT COUNT(*) FROM dbo.Asset a WHERE a.SerialNumber = source.[@SourceColumn1Name@]) &gt; 1
+					',
+					@ErrorMessage = 'There are multiple existing assets with @SourceColumn1Name@ [@SourceColumn1Value@]: cannot identify which record to update',
+					@SourceColumn1Name = 'Serial Number'
+
+				/* Custom property combo box values */
+				DECLARE @TemplateRule NVARCHAR(MAX)
+				SET @TemplateRule = '
+					NOT EXISTS(
+						SELECT 1
+						FROM dbo.UIItem i
+						WHERE i.ItemResourceName = ''@CustomPropertyName@''
+							AND i.DataSource.exist(''//CustomPropertyDropDownItem[lower-case(@Key) = lower-case(sql:column(&quot;source.[@SourceColumn1Name@]&quot;))]'') = 1
+					)
+					AND source.[@SourceColumn1Name@] != ''''
+				'
+
+				SET @Rule = REPLACE(@TemplateRule, '@CustomPropertyName@', 'CustomAssetReplacementBy')
+
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@Rule,
+					@ErrorMessage = 'The value ''@SourceColumn1Value@'' in column @SourceColumn1Name@ is not a valid value.',
+					@SourceColumn1Name = 'Replacement By'
+					
+				SET @Rule = REPLACE(@TemplateRule, '@CustomPropertyName@', 'CustomAssetComputerUsage')
+
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@Rule,
+					@ErrorMessage = 'The value ''@SourceColumn1Value@'' in column @SourceColumn1Name@ is not a valid value.',
+					@SourceColumn1Name = 'Computer Usage'
+					
+					
+				EXEC dbo.CustomAdapterValidationExecuteRules
+					@ImportObjectID = @ImportObjectID,
+					@SourceTableName = '#Assets',
+					@TraceField = 'source.[Serial Number]'
+
+				/* Lookup operations generate bogus validation rejections on blank values, so we force blanks to be non-blank values which won't match any records */
+				UPDATE #Assets SET [Assigned User] = '~' WHERE ISNULL([Assigned User], '') = ''
+				UPDATE #Assets SET Location = '~' WHERE ISNULL(Location, '') = ''
+				" />
+			<Object Type="User" Name="Lookup Assigned User by account" Update="False" Create="False" OutputField="AssignedUserID">
+				<Property Type="SAMAccountName" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="Assigned User" UseForMatching="True" Length="64" />
+			</Object>
+			<Object Type="Location" Name="Lookup Location" Update="False" Create="False" OutputField="LocationID">
+				<Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Location" UseForMatching="True" Length="64" RegexSplit="/" />
+				<Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="LocationID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+			</Object>
+			<Object Type="Corporate Unit" Name="Lookup Corporate Unit" Update="False" Create="False" OutputField="CorporateUnitID">
+				<Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Corporate Unit" UseForMatching="True" Length="64" RegexSplit="/" />
+				<Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CorporateUnitID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+			</Object>
+			<Object Type="Custom" Name="Validate Lookup Results" TimeOut="-1" Query="
+				DECLARE @ImportObjectID INT
+				EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Lookup Results'
+
+				DECLARE @Rule NVARCHAR(1024)
+
+				/* Validate assigned user was found */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = 'source.[Assigned User] != ''~'' AND source.AssignedUserID IS NULL',
+					@ErrorMessage = '@SourceColumn1Name@ [@SourceColumn1Value@] could not be found',
+					@SourceColumn1Name = 'Assigned User'
+
+				/* Validate location was found */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = 'source.Location != ''~'' AND source.LocationID IS NULL',
+					@ErrorMessage = '@SourceColumn1Name@ [@SourceColumn1Value@] could not be found',
+					@SourceColumn1Name = 'Location'
+
+				/* Validate corporate unit was found */
+				EXEC dbo.CustomAdapterValidationRegisterRule
+					@ImportObjectID,
+					@ValidationRule = 'source.[Corporate Unit] != ''~'' AND source.CorporateUnitID IS NULL',
+					@ErrorMessage = '@SourceColumn1Name@ [@SourceColumn1Value@] could not be found',
+					@SourceColumn1Name = 'Corporate Unit'		
+			
+				/* Suggested TODO: Validate operator has rights to see the target locations for assets */
+
+				EXEC dbo.CustomAdapterValidationExecuteRules
+					@ImportObjectID = @ImportObjectID,
+					@SourceTableName = '#Assets',
+					@TraceField = '''Serial number '' + source.[Serial Number]'
+				" />
+			<Object Type="Asset" Name="Create &amp; Update Assets" Update="True" Create="True" OutputField="Asset_ID">
+				<Property Type="shortdescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Name" Length="256" />
+				<Property Type="serialnumber" Name="Serial Number" Update="Do not blank" ValueType="Field Value" Value="Serial Number" UseForMatching="True" Length="150" />
+				<Property Type="assettype" Name="Asset Type" Update="Do not blank" ValueType="Field Value" Value="Asset Type" Length="1000" />
+				<Property Type="assettag" Name="Asset Tag" Update="Do not blank" ValueType="Field Value" Value="Asset Tag" Length="256" />
+				<Property Type="assetstatus" Name="Asset Status" Update="Do not blank" ValueType="Field Value" Value="Status" Length="1000" />
+				<Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="LocationID" Length="128" />
+				<Property Type="businessunitid" Name="Corporate Unit ID" Update="Do not blank" ValueType="Field Value" Value="CorporateUnitID" Length="128" />
+				<Property Type="CustomAssetReplacementBy" Name="CustomAssetReplacementBy" Update="Do not blank" ValueType="Field Value" Value="Replacement By" IsCustomField="True" />
+				<Property Type="CustomAssetComputerUsage" Name="CustomAssetComputerUsage" Update="Do not blank" ValueType="Field Value" Value="Computer Usage" IsCustomField="True" />
+				<Property Type="CustomAssetUQAssetTag" Name="CustomAssetUQAssetTag" Update="Do not blank" ValueType="Field Value" Value="UQ Asset Tag" IsCustomField="True" />
+				<Property Type="assigntouserid" Name="Assigned To User ID" Update="Do not blank" ValueType="Field Value" Value="AssignedUserID" DataType="Integer" />
+			</Object>
+		</Import>
+	</Imports>
+</root>

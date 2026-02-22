@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="50" Exclude="" Action="add" FolderID="">
+    <SearchName>CYWHS Assets View</SearchName>
+    <Description>unknown</Description>
+    <FolderName>SAH Views</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

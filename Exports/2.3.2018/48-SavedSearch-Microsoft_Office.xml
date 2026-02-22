@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="48" Exclude="" Action="add" FolderID="">
+    <SearchName>Microsoft Office</SearchName>
+    <Description>unknown</Description>
+    <FolderName>License Compliance/Applications</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

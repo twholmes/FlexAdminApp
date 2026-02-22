@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="002.03.00 Software License Contract Reviews" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>SQL view [CustomViewSoftwareLicenseContractReviews] that lists the purchase price for each license</Description>
+    <FolderName>Governance Reports (SQL)</FolderName>
+    <CreationDate>22/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT *
+FROM dbo.[CustomViewSoftwareLicenseContractReviews]
+ORDER BY SoftwareLicenseID, ReviewDateRank
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

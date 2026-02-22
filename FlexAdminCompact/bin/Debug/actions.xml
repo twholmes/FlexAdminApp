@@ -1,0 +1,173 @@
+<?xml version="1.0" standalone="yes"?>
+<actions name="FlexAdmin" updated="03/11/2019 17:00:00">
+  <action name="ShellHelp" group="shell" enabled="True" scripttype="ps1">
+  	<description>Displays this help</description>
+  	<label>ShellHelp</label>
+  	<script/>
+  </action>    
+  <action name="ShellListModules" group="shell" enabled="True" scripttype="ps1">
+  	<description>List all FlexAdmin modules</description>
+  	<label>ShellListModules</label>
+  	<script/>
+  </action>    
+  <action name="ShellListTargets" group="shell" enabled="True" scripttype="ps1">
+  	<description>List all target names and descriptions</description>
+  	<label>ShellListTargets</label>
+  	<script/>
+  </action>    
+  <action name="ShellListInstalled" group="shell" enabled="True" scripttype="ps1">
+  	<description>List all installed FNMS products</description>
+  	<label>ShellListInstalled</label>
+  	<script/>
+  </action>    
+  <action name="ShellListTenants" group="shell" enabled="True" scripttype="ps1">
+  	<description>Lists configured database tenants</description>
+  	<label>ShellListTenants</label>
+  	<script/>
+  </action>
+  <action name="ConfigureReportProcedures" group="standard" enabled="True" scripttype="ps1">
+  	<description>Configure FNMS Custom Report procedures</description>
+  	<label>ConfigureReportProcedures</label>
+  	<script/>
+  </action>    
+  <action name="ConfigureReports" group="standard" enabled="True" scripttype="ps1">
+  	<description>Create and configure FNMS Custom Reports</description>
+  	<label>ConfigureReports</label>
+  	<script/>
+  </action>
+  <action name="PrepareInvAgentInstallers" group="standard" enabled="True" scripttype="ps1">
+  	<description>Prepare directories containing files that can be used to install Flexera Inventory Manager software components on other computers</description>
+  	<label>PrepareInvAgentInstallers</label>
+  	<script/>
+  </action>
+  <action name="RegisterServiceAccountCredentials" group="standard" enabled="True" scripttype="ps1">
+  	<description>Register Service Account Credentials</description>
+  	<label>RegisterServiceAccountCredentials</label>
+  	<script/>
+  </action>
+  <action name="RegularCleanup" group="standard" enabled="True" scripttype="ps1">
+  	<description>Perform regular cleanup activities to remove stale old files and data</description>
+  	<label>RegularCleanup</label>
+  	<script/>
+  </action>
+  <action name="ConfigureCleanupScheduledTask" group="standard" enabled="True" scripttype="ps1">
+  	<description>Configure a scheduled task to perform regular cleanup activities</description>
+  	<label>ConfigureCleanupScheduledTask</label>
+  	<script/>
+  </action>
+  <action name="RunInventoryAgent" group="bau" enabled="True" scripttype="ps1">
+  	<description>Runs the Inventory Agent in full UI mode</description>
+  	<label>RunInventoryAgent</label>
+  	<script/>
+  </action>
+  <action name="RunScheduleAgent" group="bau" enabled="True" scripttype="ps1">
+  	<description>Runs the Schedule Agent in full UI mode</description>
+  	<label>RunScheduleAgent</label>
+  	<script/>
+  </action>
+  <action name="ConfigureReplicationON" group="bau" enabled="True" scripttype="ps1">
+  	<description>Configure web.config file to turn Replication ON</description>
+  	<label>ConfigureReplicationON</label>
+  	<script/>
+  </action>
+  <action name="ConfigureReplicationOFF" group="bau" enabled="True" scripttype="ps1">
+  	<description>Configure web.config file to turn Replication OFF</description>
+  	<label>ConfigureReplicationOFF</label>
+  	<script/>
+  </action>
+  <action name="MoveFilesFromReplication" group="bau" enabled="True" scripttype="ps1">
+  	<description>Moves files from the replication director to Incomming</description>
+  	<label>MoveFilesFromReplication</label>
+  	<script/>
+  </action>
+  <action name="PerformHealthChecks" group="maintenance" enabled="True" scripttype="ps1">
+  	<description>Perform regular FNMS system Health Checks</description>
+  	<label>PerformHealthChecks</label>
+  	<script/>
+  </action>
+  <action name="CUSTOM1" group="custom" enabled="True" scripttype="ps1">
+  	<description/>
+  	<label>DIR (Test1)</label>
+  	<script>
+      <![CDATA[
+Write-Host "CUSTOM1 TEST"
+dir
+      ]]>
+    </script>
+  </action>
+  <action name="CUSTOM2" group="custom" enabled="True" scripttype="ps1">
+  	<description/>    	
+  	<label>ShellListModules (Test2)</label>    	
+  	<script>
+      <![CDATA[
+Write-Host "CUSTOM2 TEST"
+$WorkingFolder = Split-Path $MyInvocation.MyCommand.Path      
+.\script.ps1 ShellListModules -FlexAdminPath $WorkingFolder
+      ]]>
+    </script>
+  </action>      
+  <action name="CUSTOM3" group="custom" enabled="True" scripttype="ps1">
+  	<description/>    	
+  	<label>ShellListSettings (Test3)</label>    	
+  	<script>
+      <![CDATA[
+Write-Host "CUSTOM3 TEST"
+$WorkingFolder = Split-Path $MyInvocation.MyCommand.Path      
+.\script.ps1 ShellListSettings -FlexAdminPath $WorkingFolder
+      ]]>
+    </script>
+  </action>
+  <action name="CUSTOM4" group="custom" enabled="True" scripttype="ps1">
+  	<description/>    	
+  	<label>ShellUpdateRegSettings (Test4)</label>
+  	<script>
+      <![CDATA[
+Write-Host "CUSTOM4 TEST"
+$WorkingFolder = Split-Path $MyInvocation.MyCommand.Path      
+.\script.ps1 ShellUpdateRegSettings -FlexAdminPath $WorkingFolder
+      ]]>
+    </script>
+  </action>
+  <action name="CUSTOM5" group="custom" enabled="False" scripttype="ps1">
+  	<description/>    	
+  	<menu/>
+  	<script/>    	
+  </action>    
+  <action name="SQLTEST" group="custom" enabled="False" scripttype="sql">
+  	<description/>    	
+  	<label>SQLTEST</label>
+  	<script>
+      <![CDATA[
+PRINT 'SQL Server Version is: ' + @@version
+
+DECLARE @FnmsVersion nvarchar(10)
+SELECT @FnmsVersion = Value FROM DataBaseConfiguration where Property like 'CMSchemaVersion'
+PRINT 'FNMS Version is: ' + @FnmsVersion
+PRINT ''      
+
+-- cursor to print list of tenants
+DECLARE @TenantID int
+DECLARE @TenantUID nvarchar(20)
+DECLARE @TenantName nvarchar(256)
+DECLARE @TenantComment nvarchar(128)
+
+DECLARE c CURSOR FOR SELECT TenantID, TenantUID, TenantName, Comments FROM dbo.Tenant
+OPEN c
+
+FETCH NEXT FROM c INTO @TenantID, @TenantUID, @TenantName, @TenantComment
+WHILE @@FETCH_STATUS = 0
+BEGIN
+  PRINT N'TENANT-' + convert(nvarchar(2),@TenantID) + N' UID=' + ISNULL(@TenantUID,'') + N' COMMENTS=' + ISNULL(@TenantComment,'')      
+  PRINT @TenantName
+  PRINT ''
+  --EXEC dbo.SetTenantID @TenantID
+
+  FETCH NEXT FROM c INTO @TenantID, @TenantUID, @TenantName, @TenantComment
+END
+
+CLOSE c
+DEALLOCATE c
+      ]]>
+    </script>
+  </action>
+</actions>

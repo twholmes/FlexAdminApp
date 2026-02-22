@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="68" Exclude="" Action="add" FolderID="">
+    <SearchName>FMC Computers</SearchName>
+    <Description>unknown</Description>
+    <FolderName>Hardware Assets/Assets</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

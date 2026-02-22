@@ -1,0 +1,156 @@
+@* Copyright (C) 2015-2017 Flexera Software *@
+
+@* CustomBusinessDataUploadTaskID is passed as the model *@
+@model int
+
+@{
+    ViewBag.Title = string.Format(Flexera.Web.Presentation.Resources.Shared._Layout.PageTitle, "Upload Details");
+}
+
+<script src="/Suite/Scripts/angular.min.js"></script>
+
+<script>
+angular.module('uploadDetailsApp', [])
+.run(function($rootScope, $http) {
+	$rootScope.model = {
+		loading: 0,
+		customBusinessDataUploadTaskID: @Model,
+		onlyDisplayRejected: true,
+		status: {},
+		statusDetail: {}
+	};
+	
+	++$rootScope.model.loading;
+	$http.get('CurrentStatus?id=' + $rootScope.model.customBusinessDataUploadTaskID)
+		.success(function(data, status, headers, config) {
+			$rootScope.model.status = data.Uploads[0];
+			$rootScope.model.hasAccessToOtherOperatorsTasks = data.HasAccessToOtherOperatorsTasks;
+		})
+		.error(function(data, status, headers, config) {
+			httpError('Error refreshing task status', data, status, config);
+		})
+		.finally(function() {
+			--$rootScope.model.loading;
+		});
+
+	$rootScope.refreshDetails = function() {
+		++$rootScope.model.loading;
+
+		$http.get('TaskStatusDetail?id=' + $rootScope.model.customBusinessDataUploadTaskID + '&r=' + $rootScope.model.onlyDisplayRejected)
+			.success(function(data, status, headers, config) {
+				$rootScope.model.statusDetail = data;
+			})
+			.error(function(data, status, headers, config) {
+				httpError('Error refreshing task status detail', data, status, config);
+			})
+			.finally(function() {
+				--$rootScope.model.loading;
+			});
+	};
+
+	$rootScope.refreshDetails();
+
+	function httpError(msg, data, status, config) {
+		msg = msg + ': ' + status;
+		if (window.console && console.error)
+			console.error(msg, config, data);
+
+		ErrorsCore.unhandledError(msg, config.url);
+	}
+});
+
+detailsGridControl = {};
+</script>
+
+<div ng-app="uploadDetailsApp" class="ignore-changes">
+	<div class="list-header" ng-cloak>
+		<h1 class="list-title">Upload Details</h1>
+		<div class="row">
+			<div class="span8">
+				<div class="field-layout">
+					<div class="field-label">Upload type:</div>
+					<div class="field-body readonlyfield">{{ model.status.Adapter || 'Invalid or removed upload ID' }}</div>
+				</div>
+				<div class="field-layout">
+					<div class="field-label">File name:</div>
+					<div class="field-body readonlyfield"><a href="DownloadDataSourceFile?id={{ model.status.CustomBusinessDataUploadTaskID }}">{{ model.status.DataSourceFileName }}</a></div>
+				</div>
+				<div class="field-layout">
+					<div class="field-label">Diagnostic log:</div>
+					<div class="field-body readonlyfield"><span ng-if="model.status.LogFilePath && model.status.Status != 2"><a href="DownloadLog?id={{ model.status.CustomBusinessDataUploadTaskID }}">Download</a></span></div>
+				</div>
+			</div>
+			<div class="span8">
+				<div class="field-layout" ng-if="model.hasAccessToOtherOperatorsTasks">
+					<div class="field-label">Operator:</div>
+					<div class="field-body readonlyfield">{{ model.status.OperatorLogin }}</div>
+				</div>
+				<div class="field-layout">
+					<div class="field-label">Uploaded:</div>
+					<div class="field-body readonlyfield">{{ model.status.StartTime }}</div>
+				</div>
+				<div class="field-layout">
+					<div class="field-label">Import started:</div>
+					<div class="field-body readonlyfield">{{ model.status.StatusDetails != null && model.status.StatusDetails.length != 0 ? model.status.StatusDetails[0].StartDate : 'Unknown' }}</div>
+				</div>
+				<div class="field-layout">
+					<div class="field-label">Last activity:</div>
+					<div class="field-body readonlyfield">{{ model.status.LastUpdateTime }}</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="span16">
+				<div class="field-layout">
+					<div class="field-label">Status summary:</div>
+					<div class="field-body readonlyfield">@Html.Action("RenderUploadStatusSummary", "BusinessDataUploads", new { modelVariable = new Tuple<string, string>("uploadDetailsApp", "model.status") })</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<br/>
+	<h2>Imported Rows</h2>
+
+	<label>
+		<input class="checkboxfield" ng-model="model.onlyDisplayRejected" ng-change="refreshDetails()" type="checkbox" />
+		Display only "rejected" records
+	</label>
+
+	<div class="grid" ng-class="model.loading != 0 ? 'grid-loading' : ''" data-control="detailsGridControl">
+		<table style="border-collapse: collapse; width: 100%;" cellpadding="0" cellspacing="0">
+			<thead>
+				<tr>
+					<td class="grid-column-header">Row number</td>
+					<td class="grid-column-header">Row description</td>
+					<td class="grid-column-header">Action</td>
+					<td class="grid-column-header">Message</td>
+					<td class="grid-column-header">Step</td>
+					<td class="grid-column-header">Target record type</td>
+				</tr>
+			</thead>
+			<tbody>
+				<tr ng-repeat="s in model.statusDetail" ng-class-even="'grid-even-row'" ng-class-odd="'grid-odd-row'" ng-cloak>
+					<td class="grid-cell">{{ s.RecordNumber || "" }}</td>
+					<td class="grid-cell">{{ s.RecordDescription }}</td>
+					<td class="grid-cell">{{ s.Action }}</td>
+					<td class="grid-cell">{{ s.Message }}</td>
+					<td class="grid-cell">{{ s.ObjectName }}</td>
+					<td class="grid-cell">{{ s.ObjectType }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<div class="grid-loading-panel"></div>
+		<div ng-show="!model.statusDetail.length && model.loading == 0" class="grid-noresults" ng-cloak>
+			<h4>No results</h4>
+		</div>
+		<div ng-show="model.statusDetail.length == 1000" ng-cloak> @* The 1000 figure here matches the same hard-coded count in the CustomBusinessDataUploadTaskStatusDetail stored procedure *@
+			<span class="icon-small icon-warning ts-dark-orange"></span> Only the first 1000 rows of data are displayed
+		</tr>
+	</div>
+</div>
+
+<br/><br/>
+<div style="position: absolute; bottom: 0"><em>This page is a contributed add-on module for FlexNet Manager Suite provided for use on an as-is basis without support.</em></div>

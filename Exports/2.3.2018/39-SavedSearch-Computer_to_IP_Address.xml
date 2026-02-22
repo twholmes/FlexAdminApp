@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="39" Exclude="" Action="add" FolderID="">
+    <SearchName>Computer to IP Address</SearchName>
+    <Description>unknown</Description>
+    <FolderName>Hardware Assets/ManageSoft</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

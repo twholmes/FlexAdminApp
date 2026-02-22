@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>ECMImport Details</SearchName>
+    <Description>This report lists import detail result records from an MGSBI run.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+SELECT 
+  ais.[ImportID]
+  ,ais.[ImportName]
+  ,ais.[ImportType]
+  ,aio.[EndDate]
+  ,aid.[RecordNumber]
+  ,aid.[Action]
+  ,aio.[ObjectName]
+  ,aid.[RecordDescription]
+  ,aid.[Message]
+FROM dbo.[ECMImportLog_Detail] AS aid
+  JOIN dbo.[ECMImportLog_Object] as aio on aio.[ImportObjectID] = aid.[ImportObjectID]
+	JOIN dbo.[ECMImportLog_Summary] as ais on ais.[ImportID] = aid.[IMportID]      
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ImportID,ImportName,ImportType,EndDate,RecordNumber,Action,ObjectName,RecordDescription,Message
+    </SearchColumns>          
+  </Report>
+</CustomReports>

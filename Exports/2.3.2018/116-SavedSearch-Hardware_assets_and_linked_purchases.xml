@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="116" Exclude="" Action="add" FolderID="">
+    <SearchName>Hardware assets and linked purchases</SearchName>
+    <Description>A list of Hardware Assets and the Purchase Orders linked to them
+ - where the Purchase Order field is not empty
+ - includes serial number
+ - includes Hardware Model
+ - includes Hardware Asset Status
+ - Corporate Unit against PO</Description>
+    <FolderName>
+    </FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate purchase order details that user is allowed access
+	CREATE TABLE #PurchaseOrderDetailAllowedOrders (PurchaseOrderID int PRIMARY KEY)
+	INSERT	#PurchaseOrderDetailAllowedOrders
+	SELECT	PurchaseOrderID
+	FROM	TablePurchaseOrderCurrentUser(NULL, NULL, NULL, NULL)
+
+	CREATE TABLE #PurchaseOrderDetailAllowed (PurchaseOrderDetailID int PRIMARY KEY)
+	INSERT  #PurchaseOrderDetailAllowed
+	SELECT  allowed.PurchaseOrderDetailID FROM TablePurchaseOrderDetailCurrentUser(NULL, NULL, NULL, NULL) AS allowed
+	JOIN	PurchaseOrderDetail AS pod ON pod.PurchaseOrderDetailID = allowed.PurchaseOrderDetailID
+	JOIN    #PurchaseOrderDetailAllowedOrders AS po ON po.PurchaseOrderID = pod.PurchaseOrderID
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for assets
+                	SELECT  Asset.AssetID AS [AssetID],
+                        Asset.ShortDescription AS [ShortDescription],
+                        Asset.SerialNumber AS [SerialNumber],
+                        Asset.ModelNo AS [ModelNo],
+                        AssetStatusI18N.StatusDefaultValue AS [AssetStatus],
+                        AssetTypeI18N.AssetTypeName AS [AssetType],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderLineID],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Description],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderNumber],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_CorporateStructure],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Quantity],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_EffectiveQuantity],
+                        [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_LicenseQuantity]
+                	FROM    Asset
+                			-- Filter
+                			INNER JOIN #AssetAllowed AS filter ON filter.AssetID = Asset.AssetID
+                			-- Additional joins
+                			LEFT OUTER JOIN AssetStatusI18N ON AssetStatusI18N.AssetStatusID = Asset.AssetStatusID
+                        LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID
+                        -- Link from Asset to Purchase Order Lines via AssetPurchaseOrder table
+                        	LEFT OUTER JOIN (
+                        			SELECT  AssetPurchaseOrder.AssetID,
+                        					PurchaseOrderDetailInfo.*
+                        			FROM    AssetPurchaseOrder
+                        					INNER JOIN (
+                        							-- Custom view query for purchase order details
+                        								SELECT  PurchaseOrderDetailInfo.PurchaseOrderDetailID AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderLineID],
+                        							        PurchaseOrderDetailInfo.ItemDescription AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Description],
+                        							        PurchaseOrderDetailInfo.PurchaseOrderNo AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderNumber],
+                        							        CorporateStructure.Path AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_CorporateStructure],
+                        							        PurchaseOrderDetailInfo.Quantity AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Quantity],
+                        							        PurchaseOrderDetailInfo.EffectiveQuantity AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_EffectiveQuantity],
+                        							        PurchaseOrderDetailInfo.LicenseQuantity AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_LicenseQuantity],
+                        										PurchaseOrderDetailInfo.PurchaseOrderID AS [R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderID]
+                        								FROM    PurchaseOrderDetailWithPONoSKUMatching AS PurchaseOrderDetailInfo
+                        										-- Filter
+                        										INNER JOIN #PurchaseOrderDetailAllowed AS filter ON filter.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN PurchaseOrder ON PurchaseOrder.PurchaseOrderID = PurchaseOrderDetailInfo.PurchaseOrderID
+                        							        LEFT OUTER JOIN GroupEx AS CorporateStructure ON PurchaseOrderDetailInfo.PODetailBusinessUnitID = CorporateStructure.GroupExID
+                        					) AS PurchaseOrderDetailInfo ON PurchaseOrderDetailInfo.R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderLineID = AssetPurchaseOrder.PurchaseOrderDetailID
+                        	) AS AssetToPurchaseOrderDetail ON AssetToPurchaseOrderDetail.AssetID = Asset.AssetID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ShortDescription] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([SerialNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ModelNo] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([AssetStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Description] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_PurchaseOrderNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_CorporateStructure] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_Quantity] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_EffectiveQuantity] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_0f14633007f239331887eab82ff8eb3d_AssetToPurchaseOrderDetail_LicenseQuantity] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

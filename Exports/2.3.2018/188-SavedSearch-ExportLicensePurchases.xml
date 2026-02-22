@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="188" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicensePurchases</SearchName>
+    <Description>Export FNMS License Purchases.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+         slpodi.[SoftwareLicenseID]
+         ,sl.[Name]
+         ,slpodi.[PurchaseOrderID]
+         ,slpodi.[PurchaseOrderDetailID]
+         ,slpodi.[PurchaseOrderNo]
+         ,pod.[SequenceNumber]
+         ,slpodi.[PurchaseOrderDetailItemDescription]
+         ,slpodi.[PurchaseOrderDetailQuantity]
+         ,slpodi.[PurchaseOrderDetailLicensePartNo]
+         ,v.[VendorName]
+         ,slpodi.[PurchaseOrderDate]
+       FROM dbo.[SoftwareLicensePurchaseOrderDetailInfo] as slpodi
+         JOIN dbo.[SoftwareLicense] as sl on sl.[SoftwareLicenseID] = slpodi.[SoftwareLicenseID]
+         JOIN dbo.[PurchaseOrderDetail] as pod on pod.[PurchaseOrderDetailID] = slpodi.[PurchaseOrderDetailID]
+         JOIN dbo.[PurchaseOrder] as po on po.[PurchaseOrderID] = slpodi.[PurchaseOrderID]
+         JOIN dbo.[Vendor] as v on v.[VendorID] = po.[VendorID]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

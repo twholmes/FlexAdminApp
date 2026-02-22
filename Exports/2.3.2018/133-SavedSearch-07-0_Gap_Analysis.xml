@@ -1,0 +1,134 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="133" Exclude="" Action="add" FolderID="">
+    <SearchName>07-0 Gap Analysis</SearchName>
+    <Description>The Gap Analysis report lists all new hardware inventories received for SAG Agency computer assets, for which an Asset record is not currently recorded in FNMS.</Description>
+    <FolderName>
+    </FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate computers that user is allowed access
+	CREATE TABLE #ComplianceComputerAllowed (ComplianceComputerID int PRIMARY KEY)
+	INSERT  #ComplianceComputerAllowed SELECT * FROM TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate users that user is allowed access
+	CREATE TABLE #ComplianceUserAllowed (ComplianceUserID int PRIMARY KEY)
+	INSERT  #ComplianceUserAllowed SELECT * FROM TableComplianceUserCurrentUser(NULL, NULL, NULL, NULL, 1)
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for computers
+                	SELECT  ComplianceComputer.ComplianceComputerID AS [ComputerID],
+                        ComplianceComputer.ComputerName AS [ComputerName],
+                        ComplianceComputer.Manufacturer AS [Manufacturer],
+                        ComplianceComputer.ModelNo AS [ModelNo],
+                        ComplianceComputerTypeI18N.DefaultValue AS [ComputerType],
+                        cd.QualifiedName AS [Domain],
+                        ComplianceComputer.SerialNo AS [SerialNo],
+                        ComplianceComputer.IPAddress AS [IPAddress],
+                        ComplianceComputer.OperatingSystem AS [OperatingSystem],
+                        ComplianceComputerRoleI18N.DefaultValue AS [ComputerRole],
+                        Location.Path AS [Location],
+                        ComplianceComputer.InventoryDate AS [InventoryDate],
+                        ComputerChassisTypeI18N.DefaultValue AS [ChassisType],
+                        AssetComplianceStatusI18N.StatusDefaultValue AS [AssetComplianceStatus],
+                        flatd.FlatName AS [FlatDomain],
+                        ComplianceComputer.InventoryAgent AS [InventoryAgent],
+                        ComplianceComputerStatusI18N.DefaultValue AS [ComputerStatus],
+                        [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserID],
+                        [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserName],
+                        [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_FullAccountName],
+                        [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetID],
+                        [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetComplianceStatus],
+                        [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetType]
+                	FROM    ComplianceComputer
+                			-- Filter
+                			INNER JOIN #ComplianceComputerAllowed AS filter ON filter.ComplianceComputerID = ComplianceComputer.ComplianceComputerID
+                			-- Additional joins
+                			LEFT OUTER JOIN dbo.ComplianceComputerTypeI18N ON ComplianceComputerTypeI18N.ComplianceComputerTypeID = ComplianceComputer.ComplianceComputerTypeID
+                        LEFT OUTER JOIN ComplianceDomain AS cd ON cd.ComplianceDomainID = ComplianceComputer.ComplianceDomainID
+                        LEFT OUTER JOIN dbo.ComplianceComputerRoleI18N ON ComplianceComputerRoleI18N.ComplianceComputerRoleID = ComplianceComputer.ComplianceComputerRoleID
+                        LEFT OUTER JOIN GroupEx AS Location ON ComplianceComputer.LocationID = Location.GroupExID
+                        LEFT OUTER JOIN ComputerChassisTypeI18n ON ComputerChassisTypeI18n.ChassisTypeID = ComplianceComputer.ChassisTypeID
+                        LEFT OUTER JOIN dbo.AssetComplianceStatusI18N ON AssetComplianceStatusI18N.AssetComplianceStatusID = ComplianceComputer.AssetComplianceStatusID
+                        LEFT OUTER JOIN dbo.ComplianceDomain AS flatd ON flatd.ComplianceDomainID = [ComplianceComputer].ComplianceDomainID
+                        LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N ON ComplianceComputerStatusI18N.ComplianceComputerStatusID = ComplianceComputer.ComplianceComputerStatusID
+                        -- Link from Computer to Calculated User
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for users
+                        				SELECT  ComplianceUser.ComplianceUserID AS [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserID],
+                        			        ComplianceUser.UserName AS [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserName],
+                        			        CASE WHEN [ComplianceUser].SAMAccountName LIKE '%\%' THEN [ComplianceUser].SAMAccountName ELSE cd.QualifiedName + '\' + [ComplianceUser].SAMAccountName END AS [R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_FullAccountName]
+                        				FROM    ComplianceUser
+                        						-- Filter
+                        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        						-- Additional joins
+                        						LEFT OUTER JOIN dbo.ComplianceDomain AS cd ON cd.ComplianceDomainID = [ComplianceUser].ComplianceDomainID
+                        	) AS ComputerToCalculatedUser ON ComputerToCalculatedUser.R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserID = ComplianceComputer.CalculatedUserID
+                        -- Link from Computer to Asset
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for assets
+                        				SELECT  Asset.AssetID AS [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetID],
+                        			        AssetComplianceStatusI18N.StatusDefaultValue AS [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetComplianceStatus],
+                        			        AssetTypeI18N.AssetTypeName AS [R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetType]
+                        				FROM    Asset
+                        						-- Filter
+                        						INNER JOIN #AssetAllowed AS filter ON filter.AssetID = Asset.AssetID
+                        						-- Additional joins
+                        						LEFT OUTER JOIN ComplianceComputer AS ComplianceComputer2 ON ComplianceComputer2.AssetID = Asset.AssetID LEFT OUTER JOIN AssetComplianceStatusI18N ON AssetComplianceStatusI18N.AssetComplianceStatusID = ComplianceComputer2.AssetComplianceStatusID
+                        			        LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID
+                        	) AS ComputerToAsset ON ComputerToAsset.R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetID = ComplianceComputer.AssetID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ComputerName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Manufacturer] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ModelNo] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ComputerType] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Domain] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([SerialNo] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([IPAddress] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([OperatingSystem] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ComputerRole] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Location] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([InventoryDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ChassisType] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([AssetComplianceStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([FlatDomain] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([InventoryAgent] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ComputerStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_UserName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_efd0be662e1b6cf624ebec37212d1b15_ComputerToCalculatedUser_FullAccountName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_6b0a0fa79a218b583be15d4d7788286f_ComputerToAsset_AssetComplianceStatus] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

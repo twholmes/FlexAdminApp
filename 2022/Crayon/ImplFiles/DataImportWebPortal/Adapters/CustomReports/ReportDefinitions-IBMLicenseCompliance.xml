@@ -1,0 +1,138 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>IBM Bundles</SearchName>
+    <Description>This report lists IBM Software Bundle definitions.</Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+       ;WITH DATA AS 
+       (
+         SELECT 
+           st.SoftwareTitleID,
+           st.FullName as SoftwareTitleName,
+           sth.IsMandatory,
+           sth.IsLocal,
+           sti.SoftwareTitleID AS SoftwareBundleTitleID,        
+           sti.SoftwareTitleName AS SoftwareBundleName,
+           sti.ProductName,
+           IsNull(sti.SoftwareTitleVersion, '') AS SoftwareTitleVersion,
+           IsNull(sti.EditionName, '') AS EditionName,
+           sti.Publisher,
+		       sts.MinNumberApps,              
+           sti.HasInstalls,
+           sti.IsLicensed,
+           sti.IsSoftwareSuite,
+           sti.IsSoftwareSuiteMember
+         FROM SoftwareTitleHierarchy sth
+           JOIN SoftwareTitleInfo AS sti ON sti.SoftwareTitleID = sth.ParentSoftwareTitleID
+           JOIN SoftwareTitle AS st ON st.SoftwareTitleID = sth.ChildSoftwareTitleID
+		       JOIN SoftwareTitleSuite sts on sts.SoftwareTitleID = sth.ParentSoftwareTitleID           
+         WHERE 
+           --sti.IsSoftwareSuite = 1
+           --AND
+           sti.Publisher = 'IBM'
+       )
+           
+       SELECT 
+         d.ProductName,
+         d.SoftwareTitleVersion,
+         d.EditionName,
+         d.SoftwareBundleName,
+		     d.MinNumberApps,            
+         d.SoftwareTitleName,
+         d.Publisher,
+         d.IsMandatory,
+         d.IsLocal,
+         d.HasInstalls,
+         d.IsLicensed
+         --d.IsSoftwareSuite,
+         --d.IsSoftwareSuiteMember
+       FROM 
+         DATA d
+       WHERE
+         1=1
+       ORDER BY       
+         d.ProductName,
+         d.SoftwareTitleVersion,
+         d.EditionName,
+         d.SoftwareBundleName,
+         d.IsMandatory DESC,
+         d.SoftwareTitleName
+  
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ProductName,SoftwareTitleVersion,EditionName,SoftwareBundleName,MinNumberApps,SoftwareTitleName,Publisher,IsMandatory,IsLocal,HasInstalls,IsLicensed   	
+    </SearchColumns>          
+  </Report>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>IBM Unlicensed Installs</SearchName>
+    <Description>This report lists candidates for IBM software bundles on secondary devices. The report lists the applications associated with IBM software bundles
+        but are not consumed as part of the software bundle due to not meeting the minimum requirement of the installation of the primary (required) application of the bundle.
+    </Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+       ;WITH DATA AS 
+       (
+         SELECT * FROM
+         (
+           SELECT 
+             cc.ComputerName, 
+             sti.ProductName,
+             sti.Publisher, 
+             sti.SoftwareTitleID,
+             sti.SoftwareTitleName,
+             sti.EditionName,
+             sti.SoftwareTitleVersion,
+             IIF(isft.SoftwareLicenseID is null, 0, 1) AS IsLicensed,
+             sl.SoftwareLicenseID,
+             IsNull(sl.Name, '') AS SoftwareLicenseName,
+             sla.[SoftwareLicenseExemptionReasonID],
+             IsNull(sler.DefaultValue, '') AS SoftwareLicenseExemptionReason
+           FROM 
+             dbo.InstalledSoftware isft
+             join dbo.SoftwareTitleInfo sti ON isft.SoftwareTitleID = sti.SoftwareTitleID
+             join dbo.ComplianceComputer AS cc ON cc.ComplianceComputerID = isft.ComplianceComputerID
+             left outer join dbo.SoftwareLicense sl ON sl.SoftwareLicenseID = isft.SoftwareLicenseID
+             left outer join dbo.[SoftwareLicenseAllocation] sla ON sla.SoftwareLicenseID = isft.SoftwareLicenseID and sla.ComplianceComputerID = isft.ComplianceComputerID
+             left outer join dbo.[SoftwareLicenseExemptionReason] sler ON sla.SoftwareLicenseExemptionReasonID = sler.SoftwareLicenseExemptionReasonID
+           WHERE EXISTS 
+           (
+             SELECT 1
+             FROM SoftwareTitleHierarchy sth
+               JOIN SoftwareTitleInfo sts
+                 ON sts.SoftwareTitleID = sth.ParentSoftwareTitleID
+             WHERE 
+               --sts.IsSoftwareSuite = 1
+               --AND
+               sts.Publisher = 'IBM'
+               AND
+               sth.ChildSoftwareTitleID = sti.SoftwareTitleID
+           )
+         ) AS query
+       )
+           
+       SELECT 
+         d.ComputerName
+         ,d.SoftwareTitleName
+         ,sts.SoftwareTitleName as SoftwareBundleName
+         --,d.IsLicensed
+       FROM 
+         DATA d 
+           JOIN SoftwareTitleHierarchy sth on sth.ChildSoftwareTitleID = d.SoftwareTitleID
+           JOIN SoftwareTitleInfo sts ON sts.SoftwareTitleID = sth.ParentSoftwareTitleID
+       WHERE
+         d.IsLicensed = 0
+       ORDER BY
+         d.ComputerName,   
+         d.SoftwareTitleName
+           
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ComputerName,SoftwareTitleName,SoftwareBundleName
+    </SearchColumns>          
+  </Report>  
+</CustomReports>

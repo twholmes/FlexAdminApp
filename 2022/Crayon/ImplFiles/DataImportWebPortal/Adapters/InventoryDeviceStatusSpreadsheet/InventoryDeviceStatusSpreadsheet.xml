@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="default" ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=FNMSCompliance;Data Source=FLEXAPP" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="DeviceStatus" Template="" Enabled="False" ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=D:\FNMS-InventoryDeviceStatusSpreadsheet.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" Query="select * from ['Inventory Device Status$']">
+      <Object Type="Computer" Name="Computer" Update="True" Create="False" OutputField="Computer_ID">
+        <Property Type="computername" Name="Computer Name" Update="Do not blank" ValueType="Field Value" Value="Device Name" Length="256" />
+        <Property Type="serialno" Name="Serial Number" Update="Do not blank" ValueType="Field Value" Value="Serial Number" UseForMatching="True" Length="100" />
+        <Property Type="compliancecomputerstatus" Name="Status" Update="Do not blank" ValueType="Field Value" Value="Status" Length="1000" />
+      </Object>
+    </Import>
+  </Imports>
+</root>

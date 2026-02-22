@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Installed IBM Bundle Software</SearchName>
+    <Description>This report lists IBM application installs of titles from Bundles.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+		;WITH DATA AS 
+		(
+			SELECT * FROM
+			(
+				SELECT 
+					cc.ComputerName, 
+					sti.ProductName,
+					sti.Publisher, 
+					sti.SoftwareTitleID,
+					sti.SoftwareTitleName,
+					sti.EditionName,
+					sti.SoftwareTitleVersion,
+					IIF(isft.SoftwareLicenseID is null, 0, 1) AS IsLicensed,
+					sl.SoftwareLicenseID,
+					IsNull(sl.Name, '') AS SoftwareLicenseName,
+					sla.[SoftwareLicenseExemptionReasonID],
+					IsNull(sler.DefaultValue, '') AS SoftwareLicenseExemptionReason
+				FROM 
+					dbo.InstalledSoftware isft
+					join dbo.SoftwareTitleInfo sti ON isft.SoftwareTitleID = sti.SoftwareTitleID
+					join dbo.ComplianceComputer AS cc ON cc.ComplianceComputerID = isft.ComplianceComputerID
+					left outer join dbo.SoftwareLicense sl ON sl.SoftwareLicenseID = isft.SoftwareLicenseID
+					left outer join dbo.[SoftwareLicenseAllocation] sla ON sla.SoftwareLicenseID = isft.SoftwareLicenseID and sla.ComplianceComputerID = isft.ComplianceComputerID
+					left outer join dbo.[SoftwareLicenseExemptionReason] sler ON sla.SoftwareLicenseExemptionReasonID = sler.SoftwareLicenseExemptionReasonID
+				WHERE EXISTS (
+					SELECT 1
+					FROM SoftwareTitleHierarchy sth
+						JOIN SoftwareTitleInfo sts
+							ON sts.SoftwareTitleID = sth.ParentSoftwareTitleID
+					WHERE 
+						sts.IsSoftwareSuite = 1
+						AND
+						sts.Publisher = 'IBM'
+						AND
+						sth.ChildSoftwareTitleID = sti.SoftwareTitleID
+				)
+			) AS query
+		)
+        
+		SELECT 
+			d.ComputerName,
+			d.Publisher, 
+			d.ProductName,
+			d.SoftwareTitleName,
+			d.EditionName,
+			d.SoftwareTitleVersion,
+			d.IsLicensed,
+			d.SoftwareLicenseName,
+			d.SoftwareLicenseExemptionReason
+		FROM 
+			DATA d
+		WHERE
+			1=1          
+       
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ComputerName,Publisher,ProductName,SoftwareTitleName,EditionName,SoftwareTitleVersion,IsLicensed,SoftwareLicenseName,SoftwareLicenseExemptionReason
+    </SearchColumns>          
+  </Report>
+</CustomReports>

@@ -1,0 +1,219 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="CSV" Delimiter="None" Name="BusinessUnit" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\ProgramData\Flexera Software\Adapters\EnterpriseGroups\Data;Extended Properties='text;HDR=Yes;FMT=Delimited(CSVDelimited)'" 
+    	Query="select * from [BusinessUnit.csv]" 
+    	FileName="C:\ProgramData\Flexera Software\Adapters\EnterpriseGroups\Data\BusinessUnit.csv" 
+    	TraceActions="created,deleted,updated,rejected" 
+    	TraceFields="[Path]" 
+    	tracelifetime="1 Month(s)" 
+    	UsePhysicalTable="True"
+    	>
+    	
+      <Log Name="NewLog" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" />
+      
+      <Object Type="CorporateUnit" Name="Business Unit" Update="False" Create="True" OutputField="businessunitoutid">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Path" UseForMatching="True" RegexSplit="/" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="businessunitoutid" UseForMatching="True" MatchingMode="like" MatchingMask="[value]%." UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+	    <Object Type="Custom" Name="Link Asset CorporateUnit" TimeOut="-1" 
+	    	Query="
+                INSERT INTO dbo.ECMImportLog_Object(ImportID, ObjectName, ObjectType, Processed, Status, StartDate)
+                SELECT [LOG_IMPORT_ID], 'Link Asset CorporateUnit', 'Custom', COUNT(*), 0, GETDATE()
+                FROM ECMImport_BusinessUnit
+         
+                DECLARE @Actions TABLE(MergeAction VARCHAR(10), rn int, AssetID int, AssetName VARCHAR(256), BusinessUnitID VARCHAR(50));
+	    	
+				WITH MatchingRules as 
+				(
+					SELECT
+					  a.AssetID,
+						a.ShortDescription as AssetName,						
+						cc.ComplianceComputerID,
+						cc.ComputerName,
+						Dom.QualifiedName,
+						eci.ROWNUMBER as rn,
+						eci.ComputerNameRule,
+						eci.ComputerDomainRule,
+						eci.[Path],
+						eci.businessunitoutid as GroupExID,
+						eci.Priority
+					FROM
+					    dbo.Asset a
+						LEFT OUTER JOIN dbo.ComplianceComputer cc on a.AssetID = cc.AssetID
+						LEFT OUTER JOIN dbo.ComplianceDomain dom on cc.ComplianceDomainID = dom.ComplianceDomainID
+						INNER JOIN dbo.ECMImport_BusinessUnit eci on 
+						(
+							a.ShortDescription like eci.ComputerNameRule 
+							and 
+							(
+								(dom.QualifiedName IS NULL AND (eci.ComputerDomainRule IS NULL OR eci.ComputerDomainRule = '%'))
+								OR dom.QualifiedName like eci.ComputerDomainRule
+							)
+						)
+					WHERE
+						a.BusinessUnitID is NULL
+				)
+
+				UPDATE a 
+				  SET a.BusinessUnitID = QualifiedList.GroupExID
+                OUTPUT 'UPDATE', QualifiedList.rn, INSERTED.AssetID, INSERTED.ShortDescription, INSERTED.BusinessUnitID INTO @Actions					
+				FROM 
+					dbo.Asset a
+					INNER JOIN 
+					(
+						SELECT
+							TOP 1 WITH TIES 
+								mr.AssetID, mr.GroupExID, mr.rn
+						FROM
+							MatchingRules mr
+						ORDER BY
+							-- Here we choose the best matching rule based on priority, length of string rule match, and lexcial ordering
+							-- refer to the spec for full requirements related to choosing the best match.
+							ROW_NUMBER() OVER
+							(
+								PARTITION BY
+									mr.AssetID
+								ORDER BY
+									mr.Priority ASC,
+									LEN(mr.ComputerNameRule) DESC,
+									LEN(mr.ComputerDomainRule) DESC,
+									UPPER(mr.[Path]) ASC
+							)
+					) as QualifiedList on a.AssetID = QualifiedList.AssetID
+
+          /* Set log records so the Adapter log will report correct counts */
+          UPDATE dbo.ECMImportLog_Object
+          SET Status = 1,
+            EndDate = GETDATE(),
+            Matched = (SELECT COUNT(*) FROM @Actions),          
+            Rejected = 0,
+            Updated = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'UPDATE'),
+            Created = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'INSERT'),
+            Deleted = 0
+          FROM dbo.ECMImportLog_Object
+          WHERE ImportID = [LOG_IMPORT_ID]
+            AND ObjectName = 'Link Asset CorporateUnit'
+         
+          INSERT INTO dbo.ECMImportLog_Detail(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, MGSRecordKey, Message)
+          SELECT
+            ImportID, 
+            ImportObjectID, 
+            a.RN, 
+            CASE MergeAction 
+              WHEN 'INSERT' THEN 'Inserted'
+              WHEN 'UPDATE' THEN 'Updated'
+            END, 
+            convert(nvarchar(255), a.AssetName),
+            convert(nvarchar(50), a.BusinessUnitID),
+            'Linked Asset to BusinessUnit'
+          FROM dbo.ECMImportLog_Object, @Actions a
+          WHERE ImportID = [LOG_IMPORT_ID]
+            AND ObjectName = 'Link Asset CorporateUnit'
+				  	
+	    	" 
+	    />
+
+	<Object Type="Custom" Name="Link Inventory CorporateUnit" TimeOut="-1" 
+	    	Query="
+                INSERT INTO dbo.ECMImportLog_Object(ImportID, ObjectName, ObjectType, Processed, Status, StartDate)
+                SELECT [LOG_IMPORT_ID], 'Link Inventory CorporateUnit', 'Custom', COUNT(*), 0, GETDATE()
+                FROM ECMImport_BusinessUnit
+         
+                DECLARE @Actions TABLE(MergeAction VARCHAR(10), rn int, ComplianceComputerID int, ComputerName VARCHAR(256), BusinessUnitID VARCHAR(50));
+	    	
+				WITH MatchingRules as 
+				(
+					SELECT					
+						cc.ComplianceComputerID,
+						cc.ComputerName,
+						Dom.QualifiedName,
+						eci.ROWNUMBER as rn,
+						eci.ComputerNameRule,
+						eci.ComputerDomainRule,
+						eci.[Path],
+						eci.businessunitoutid as GroupExID,
+						eci.Priority
+					FROM 
+						dbo.ComplianceComputer cc 
+						LEFT OUTER JOIN dbo.ComplianceDomain dom on cc.ComplianceDomainID = dom.ComplianceDomainID
+						INNER JOIN dbo.ECMImport_BusinessUnit eci on 
+						(
+							cc.ComputerName like eci.ComputerNameRule 
+							and 
+							(
+								(dom.QualifiedName IS NULL AND (eci.ComputerDomainRule IS NULL OR eci.ComputerDomainRule = '%'))
+								OR dom.QualifiedName like eci.ComputerDomainRule
+							)
+						)
+					WHERE
+						cc.BusinessUnitID is NULL
+						AND cc.AssetID IS NULL
+						AND cc.ComplianceComputerStatusID = 1
+				)
+
+				UPDATE c 
+				  SET c.BusinessUnitID = QualifiedList.GroupExID
+                OUTPUT 'UPDATE', QualifiedList.rn, INSERTED.ComplianceComputerid, INSERTED.ComputerName, INSERTED.BusinessUnitID INTO @Actions					
+				FROM 
+					dbo.ComplianceComputer c
+					INNER JOIN 
+					(
+						SELECT
+							TOP 1 WITH TIES 
+								mr.ComplianceComputerID, mr.GroupExID, mr.rn
+						FROM
+							MatchingRules mr
+						ORDER BY
+							-- Here we choose the best matching rule based on priority, length of string rule match, and lexcial ordering
+							-- refer to the spec for full requirements related to choosing the best match.
+							ROW_NUMBER() OVER
+							(
+								PARTITION BY
+									mr.ComplianceComputerID
+								ORDER BY
+									mr.Priority ASC,
+									LEN(mr.ComputerNameRule) DESC,
+									LEN(mr.ComputerDomainRule) DESC,
+									UPPER(mr.[Path]) ASC
+							)
+					) as QualifiedList on c.ComplianceComputerID = QualifiedList.ComplianceComputerID
+
+          /* Set log records so the Adapter log will report correct counts */
+          UPDATE dbo.ECMImportLog_Object
+          SET Status = 1,
+            EndDate = GETDATE(),
+            Matched = (SELECT COUNT(*) FROM @Actions),          
+            Rejected = 0,
+            Updated = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'UPDATE'),
+            Created = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'INSERT'),
+            Deleted = 0
+          FROM dbo.ECMImportLog_Object
+          WHERE ImportID = [LOG_IMPORT_ID]
+            AND ObjectName = 'Link Inventory CorporateUnit'
+         
+          INSERT INTO dbo.ECMImportLog_Detail(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, MGSRecordKey, Message)
+          SELECT
+            ImportID, 
+            ImportObjectID, 
+            a.RN, 
+            CASE MergeAction 
+              WHEN 'INSERT' THEN 'Inserted'
+              WHEN 'UPDATE' THEN 'Updated'
+            END, 
+            convert(nvarchar(255), a.ComputerName),
+            convert(nvarchar(50), a.BusinessUnitID),
+            'Linked Inventory to BusinessUnit'
+          FROM dbo.ECMImportLog_Object, @Actions a
+          WHERE ImportID = [LOG_IMPORT_ID]
+            AND ObjectName = 'Link Inventory CorporateUnit'
+				  	
+	    	" 
+	    />
+
+    </Import>
+  </Imports>
+</root>

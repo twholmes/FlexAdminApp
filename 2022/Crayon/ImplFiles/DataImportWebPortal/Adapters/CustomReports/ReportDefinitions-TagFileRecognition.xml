@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>IBM Tag file install recognition</SearchName>
+    <Description>This report lists IBM Application installs that habe been recognised via Tag file evidence.</Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        WITH DATA AS
+        (
+          SELECT DISTINCT
+            ic.ComputerName,
+            ife.[FileName],
+            --ife.ProductName,
+            --ife.ProductVersion,
+            --ife.FileVersion,
+            --ife.Description,
+            sfp.[Path],
+            st.SoftwareTitleName,
+        	  st.Publisher,
+            AlsoRecognisedByInstallerEvidence = CASE WHEN iie.DisplayName IS NULL THEN 'No' ELSE 'Yes' END
+          FROM FileEvidence fe
+            LEFT OUTER JOIN 
+            (
+              dbo.SoftwareTitleFileEvidence stfe
+               JOIN dbo.SoftwareTitleInfoLimited st ON st.SoftwareTitleID = stfe.SoftwareTitleID
+            ) ON stfe.FileEvidenceID = fe.FileEvidenceID AND stfe.EvidenceExistenceRuleID IN (1 /* mandatory */, 4 /* any of */)
+            JOIN dbo.ImportedFileEvidenceMapping ifem ON ifem.FileEvidenceID = fe.FileEvidenceID
+            JOIN dbo.ImportedFileEvidence ife ON ife.ExternalFileID = ifem.ExternalFileID AND ife.ComplianceConnectionID = ifem.ComplianceConnectionID
+            JOIN dbo.ImportedInstalledFileEvidence iife ON iife.ExternalFileID = ifem.ExternalFileID AND iife.ComplianceConnectionID = ifem.ComplianceConnectionID
+            JOIN dbo.ImportedComputer ic ON ic.ExternalID = iife.ExternalID AND ic.ComplianceConnectionID = iife.ComplianceConnectionID
+            JOIN FNMSInventory.dbo.SoftwareFilePath sfp ON sfp.SoftwareFilePathID = iife.ExternalFilePathID
+        
+            LEFT OUTER JOIN 
+            (
+              dbo.SoftwareTitleInstallerEvidence stie
+               JOIN dbo.ImportedInstallerEvidenceMapping iiem ON iiem.InstallerEvidenceID = stie.InstallerEvidenceID
+               JOIN dbo.ImportedInstalledInstallerEvidence iiie ON iiie.ExternalInstallerEvidenceID = iiem.ExternalInstallerID AND iiie.ComplianceConnectionID = iiem.ComplianceConnectionID
+             JOIN dbo.ImportedInstallerEvidence iie ON iie.ExternalInstallerID = iiem.ExternalInstallerID AND iie.ComplianceConnectionID = iiem.ComplianceConnectionID
+            ) ON stie.SoftwareTitleID = stfe.SoftwareTitleID AND iiie.ExternalComputerID = iife.ExternalID
+
+          WHERE
+           (fe.FileName like '%.swidtag' or fe.FileName like '%.swtag')
+            AND (fe.FileName LIKE '%ibm%' OR st.Publisher = 'IBM') -- Is related to IBM
+            AND ife.FileName NOT LIKE '/%' -- Exclude duplicates: swtag files are listed twice from UNIX, once with an absolute path and once without
+            AND st.SoftwareTitleName IS NOT NULL -- File is used for recognition
+                    
+        )
+        
+        SELECT
+          d.SoftwareTitleName,
+          d.FileName,
+          d.Path,
+          d.ComputerName,
+          d.AlsoRecognisedByInstallerEvidence
+        FROM
+          DATA d
+        ORDER BY 
+          d.SoftwareTitleName, ComputerName
+                   
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       SoftwareTitleName,FileName,Path,ComputerName,AlsoRecognisedByInstallerEvidence       
+    </SearchColumns>          
+  </Report>
+</CustomReports>

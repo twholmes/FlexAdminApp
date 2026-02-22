@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="49" Exclude="" Action="add" FolderID="">
+    <SearchName>FlowBreeze View</SearchName>
+    <Description>unknown</Description>
+    <FolderName>License Compliance/Applications</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

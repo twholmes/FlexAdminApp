@@ -1,0 +1,106 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="196" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicenseUseRights</SearchName>
+    <Description>Export FNMS License Use Rights</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicense.Edition AS [Edition],
+                        SoftwareLicense.Version AS [Version],
+                        Publisher.VendorName AS [PublisherName],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        SoftwareLicense.LimitNumberOfVirtualInstalls AS [LimitNumberOfVirtualInstalls],
+                        DowngradeEnabled.DowngradeEnabled AS [DowngradeEnabled],
+                        DowngradeToEdition.DowngradeToEdition AS [DowngradeToEdition],
+                        DowngradetoVersion.DowngradeToVersion AS [DowngradeToVersion],
+                        DowngradeToEditionName.EditionName AS [DowngradeToEditionName],
+                        DowngradeToVersionName.VersionName AS [DowngradeToVersionName],
+                        UpgradeEnabled.UpgradeEnabled AS [UpgradeEnabled],
+                        UpgradeToVersionName.VersionName AS [UpgradeToVersionName],
+                        UpgradeUntil.UpgradeUntil AS [UpgradeUntil],
+                        UpgradeUntilDate.UpgradeUntilDate AS [UpgradeUntilDate],
+                        SoftwareLicense.AlwaysInstalled AS [AlwaysInstalled],
+                        SoftwareLicense.Comments AS [Comments],
+                        SoftwareLicenseDurationI18N.DurationDefaultValue AS [Duration],
+                        SoftwareLicense.ExpiryDate AS [ExpiryDate],
+                        CAST(CASE WHEN (ISNULL(smt.NumberMaintained,0) > 0) THEN 1 ELSE 0 END AS BIT) AS [HasActiveMaintenance],
+                        SoftwareLicenseMetricI18N.DefaultValue AS [Metric],
+                        ComplianceUser.UserName AS [ManagerName],
+                        SoftwareLicense.NumberAllocated AS [NumberAllocated],
+                        sltp.CompliancePriority AS [Priority],
+                        ProductPrimary.ProductName AS [ProductName],
+                        SoftwareLicense.RetirementDate AS [RetirementDate],
+                        EndOfLifeReason.ResourceName AS [EndOfLifeReason],
+                        LicenseStatusI18N.DefaultValue AS [LicenseStatus],
+                        SoftwareLicense.TrueUp AS [LicenseSubjectToTrueUp],
+                        SoftwareLicense.WarrantyExpiryDate AS [WarrantyExpiryDate],
+                        AssetWarrantyTypeI18N.WarrantyTypeDefaultValue AS [LicenseWarrantyType],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+                        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, CAST(MAX(CAST(slp_inner.DowngradeEnabled AS int)) AS bit) AS DowngradeEnabled FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) DowngradeEnabled ON DowngradeEnabled.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, CAST(MAX(CAST(slp_inner.DowngradeToEdition AS int)) AS bit) AS DowngradeToEdition FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) DowngradeToEdition ON DowngradeToEdition.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, CAST(MAX(CAST(slp_inner.DowngradeToVersion AS int)) AS bit) AS DowngradeToVersion FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) DowngradeToVersion ON DowngradeToVersion.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN ste.EditionName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS EditionName FROM (SELECT slp_inner.SoftwareLicenseID, MAX(slp_inner.DowngradeToEditionID) AS DowngradeToEditionID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleEdition AS ste ON ste.SoftwareTitleEditionID = slp_maxed.DowngradeToEditionID) DowngradeToEditionName ON DowngradeToEditionName.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stv.VersionName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS VersionName FROM (SELECT slp_inner.SoftwareLicenseID, MAX(slp_inner.DowngradeToVersionID) AS DowngradeToVersionID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleVersion AS stv ON stv.SoftwareTitleVersionID = slp_maxed.DowngradeToVersionID) DowngradeToVersionName ON DowngradeToVersionName.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, CAST(MAX(CAST(slp_inner.UpgradeEnabled AS int)) AS bit) AS UpgradeEnabled FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) UpgradeEnabled ON UpgradeEnabled.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stv.VersionName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS VersionName FROM (SELECT slp_inner.SoftwareLicenseID, MAX(slp_inner.UpgradeToVersionID) AS UpgradeToVersionID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleVersion AS stv ON stv.SoftwareTitleVersionID = slp_maxed.UpgradeToVersionID) UpgradeToVersionName ON UpgradeToVersionName.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, CAST(MAX(CAST(slp_inner.UpgradeUntil AS int)) AS bit) AS UpgradeUntil FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) UpgradeUntil ON UpgradeUntil.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN (SELECT	slp_inner.SoftwareLicenseID, MAX(slp_inner.UpgradeUntilDate) AS UpgradeUntilDate FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) UpgradeUntilDate ON UpgradeUntilDate.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN SoftwareLicenseDurationI18N ON SoftwareLicenseDurationI18N.SoftwareLicenseDurationID = SoftwareLicense.DurationID
+                        LEFT OUTER JOIN SoftwareLicensePODetailMaintenanceTotalsCurrentUser AS smt ON smt.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN SoftwareLicenseMetricI18N ON SoftwareLicenseMetricI18N.SoftwareLicenseMetricID = SoftwareLicense.SoftwareLicenseMetricID
+                        LEFT OUTER JOIN ComplianceUser ON ComplianceUser.ComplianceUserID = SoftwareLicense.ManagerID
+                        LEFT OUTER JOIN SoftwareLicenseTypePriority AS sltp ON sltp.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN (SELECT slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS ProductName FROM (SELECT slp_inner.SoftwareLicenseID, MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID) ProductPrimary ON ProductPrimary.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN EndOfLifeReason ON EndOfLifeReason.EndOfLifeReasonID = SoftwareLicense.EndOfLifeReasonID
+                        LEFT OUTER JOIN LicenseStatusI18N ON LicenseStatusI18N.LicenseStatusID = SoftwareLicense.LicenseStatusID
+                        LEFT OUTER JOIN AssetWarrantyTypeI18N ON AssetWarrantyTypeI18N.AssetWarrantyTypeID = SoftwareLicense.WarrantyTypeID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Version] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

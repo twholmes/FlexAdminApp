@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Computer License Exemptions</SearchName>
+    <Description>This report shows the exemptions loaded through the Computer License Excemption Adapter.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[
+       ;WITH Exemptions AS 
+       (     
+         SELECT DISTINCT
+           sla.SoftwareLicenseAllocationID
+           ,sla.ComplianceComputerID
+           ,cc.ComputerName
+           ,sla.SoftwareLicenseID
+           ,sl.Name AS LicenseName
+           ,sler.DefaultValue AS [ExemptionReason]
+           ,slce.[Environment]
+           ,slce.[Role]
+           ,slce.[AssociateLicense]
+           ,slce.[AssociateDevice]
+           ,slce.[Comment]
+           ,slce.[UpdateDate]
+         FROM SoftwareLicenseAllocation AS sla
+           JOIN dbo.SoftwareLicense AS sl ON sl.SoftwareLicenseID = sla.SoftwareLicenseID
+           JOIN dbo.ComplianceComputer AS cc ON sla.ComplianceComputerID = cc.ComplianceComputerID
+           JOIN dbo.SoftwareLicenseExemptionReason AS sler ON sla.SoftwareLicenseExemptionReasonID = sler.SoftwareLicenseExemptionReasonID
+           LEFT OUTER JOIN dbo.SoftwareLicenseCustomExemptions AS slce ON sla.ComplianceComputerID = slce.ComplianceComputerID and sla.SoftwareLicenseID = slce.SoftwareLicenseID
+       ) 
+       SELECT 
+         e.[LicenseName]
+         ,e.ComputerName
+         ,e.[ExemptionReason]
+         ,e.[Environment]
+         ,e.[Role]
+         ,e.[AssociateLicense]
+         ,e.[AssociateDevice]
+         ,e.[Comment]
+         ,e.[UpdateDate]
+       FROM Exemptions AS e          
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+      LicenseName,ComputerName,ExemptionReason,Environment,Role,AssociateLicense,AssociateDevice,Comment,UpdateDate
+    </SearchColumns>          
+  </Report>
+</CustomReports>

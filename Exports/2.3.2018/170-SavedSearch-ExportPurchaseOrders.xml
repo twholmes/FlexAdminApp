@@ -1,0 +1,93 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="170" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportPurchaseOrders</SearchName>
+    <Description>Export FNMS Purchase Orders</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate purchase orders that user is allowed access
+	CREATE TABLE #PurchaseOrderAllowed (PurchaseOrderID int PRIMARY KEY)
+	INSERT  #PurchaseOrderAllowed SELECT * FROM TablePurchaseOrderCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate vendors that user is allowed access
+	CREATE TABLE #VendorAllowed (VendorID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMVendors', 'list')) = 1
+	BEGIN
+			INSERT  #VendorAllowed SELECT VendorID FROM Vendor
+	END
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for purchase orders
+                	SELECT  PurchaseOrder.PurchaseOrderID AS [PurchaseOrderID],
+                        PurchaseOrder.PurchaseOrderNo AS [PurchaseOrderNumber],
+                        PurchaseOrder.ShortDescription AS [PurchaseOrderDescription],
+                        PurchaseOrder.PurchaseOrderDate AS [PurchaseOrderDate],
+                        PurchaseOrderStatusI18N.DefaultValue AS [PurchaseOrderStatus],
+                        PurchaseOrder.RequestNo AS [RequestNo],
+                        PurchaseOrder.RequestDate AS [RequestDate],
+                        PurchaseOrder.InvoiceNo AS [InvoiceNo],
+                        PurchaseOrder.InvoiceDate AS [InvoiceDate],
+                        CAST(PurchaseOrder.TotalPrice * TotalPriceRate.Rate AS money) AS [TotalPrice],
+                        CAST(PurchaseOrder.SalesTax * SalesTaxRate.Rate AS money) AS [SalesTax],
+                        CAST(PurchaseOrder.ShippingAndHandling * ShippingAndHandlingRate.Rate AS money) AS [ShippingAndHandling],
+                        ShippingMethodI18N.DefaultValue AS [ShippingMethod],
+                        ShippingLocation.Path AS [ShippingLocation],
+                        PurchaseOrder.ShippingDate AS [ShippingDate],
+                        [R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorID],
+                        [R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorName]
+                	FROM    PurchaseOrder
+                			-- Filter
+                			INNER JOIN #PurchaseOrderAllowed AS filter ON filter.PurchaseOrderID = PurchaseOrder.PurchaseOrderID
+                			-- Additional joins
+                			LEFT OUTER JOIN PurchaseOrderStatusI18N ON PurchaseOrderStatusI18N.PurchaseOrderStatusID = PurchaseOrder.PurchaseOrderStatusID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS TotalPriceRate ON TotalPriceRate.CurrencyRateID = PurchaseOrder.TotalPriceRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS SalesTaxRate ON SalesTaxRate.CurrencyRateID = PurchaseOrder.SalesTaxRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS ShippingAndHandlingRate ON ShippingAndHandlingRate.CurrencyRateID = PurchaseOrder.ShippingAndHandlingRateID
+                        LEFT OUTER JOIN ShippingMethodI18N ON ShippingMethodI18N.ShippingMethodID = PurchaseOrder.ShippingMethodID
+                        LEFT OUTER JOIN GroupEx AS ShippingLocation ON PurchaseOrder.ShippingLocationID = ShippingLocation.GroupExID
+                        -- Link from PurchaseOrder to Vendor
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for vendors
+                        				SELECT  Vendor.VendorID AS [R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorID],
+                        			        Vendor.VendorName AS [R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorName]
+                        				FROM    Vendor
+                        						-- Filter
+                        						INNER JOIN #VendorAllowed AS filter ON filter.VendorID = Vendor.VendorID
+                        						-- Additional joins
+                        	) AS PurchaseOrderToVendor ON PurchaseOrderToVendor.R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorID = PurchaseOrder.VendorID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([PurchaseOrderNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([PurchaseOrderDescription] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_7ea2bfdf7895fb78a609fe99f5fce94d_PurchaseOrderToVendor_VendorName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

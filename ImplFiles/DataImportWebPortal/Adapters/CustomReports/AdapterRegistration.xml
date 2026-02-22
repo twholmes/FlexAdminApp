@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+	This configuration file contains details to register the business
+	adapter in this folder with the business importer portal module.
+-->
+<BusinessAdapterRegistration>
+	<!-- Text to be displayed in drop down list for selecting which data file type to import -->
+	<DisplayName>Custom Reports</DisplayName>
+
+	<!--
+		Description of this import to be displayed below drop down list when it is selected.
+		Default: Blank (no description)
+	-->
+	<DisplayDescription>
+		Register Reports with FlexNet Manager Platform based on the definitions in an xml file that you upload.
+	</DisplayDescription>
+
+	<!--
+		Text to be displayed to prompt user to select a file
+		to be uploaded.
+
+		Default if not specified:
+		"Select the file to upload and import:"
+	-->
+	<SelectFileLabel>
+		Select the xml file containing the report definitions to import:
+	</SelectFileLabel>
+
+	<!-- Expected extension of files that are uploaded (typically "xls", "xlsx", "csv" or "xml") -->
+	<UploadFileType>xml</UploadFileType>
+
+	<!--
+		Text to display on the "Upload" button to upload
+		and queue a file for importing.
+
+		Default if not specified: "Upload"
+	-->
+	<ImportButtonText>Upload and Create Reports</ImportButtonText>
+
+	<!--
+		Text to display in a link to download a template
+		file with the correct structure to be populated for
+		importing via this adapter.
+
+		Default if not specified: "Download template"
+	-->
+	<TemplateFileHyperlinkDescription>
+		Download Custom Reports template file
+	</TemplateFileHyperlinkDescription>
+
+	<!-- Name of the template file. Leave this blank if there is no template file. -->
+	<TemplateFileName>ReportDefinitions-Template.xml</TemplateFileName>
+
+	<!-- MGSBI config file containing the adapter definition to be executed -->
+	<ConfigFile>CustomReports.xml</ConfigFile>
+
+	<!-- Name of the import in ConfigFile to be executed -->
+	<ImportName>CustomReports</ImportName>
+</BusinessAdapterRegistration>

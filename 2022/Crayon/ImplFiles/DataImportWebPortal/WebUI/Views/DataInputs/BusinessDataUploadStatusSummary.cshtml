@@ -1,0 +1,37 @@
+@* Copyright (C) 2015-2017 Flexera Software *@
+
+@* Model is a tuple: item 1 is the angular module name, and item 2 is the name of the JavaScript variable containing the model to render *@
+@model Tuple<string, string>
+
+<script>
+angular.module('@( Model.Item1 )')
+.run(function($rootScope) {
+	$rootScope.stepDoneSomething = function(step) {
+		@* Logically it should be sufficient to just check d.Processed != here, but MGSBI does not set the "Processed" count for all object types (e.g. software license allocations) *@
+		return step.Processed > 0 || step.Matched > 0 || step.Created > 0 || step.Updated > 0 || step.Deleted > 0 || step.Rejected > 0;
+	};
+});
+</script>
+
+<div ng-switch="@( Model.Item2 ).Status || ''">
+	<span ng-switch-when="1"><span class="icon-small icon-not-started ts-grey" title="Pending"></span> Queued (position {{ @( Model.Item2 ).QueuePosition }})</span>
+	<span ng-switch-when="2"><span class="icon-small icon-dot ts-blue" title="In progress"></span> In progress</span>
+	<span ng-switch-when="3"><span class="icon-small icon-first-use-tick ts-dark-aqua" title="Completed"></span> Completed successfully</span>
+	<span ng-switch-when="4"><span class="icon-small icon-failed ts-dark-orange" title="Completed with errors"></span> Completed with error: <b>{{ @( Model.Item2 ).SummaryMessage }}</b></span>
+	<span ng-switch-when="5"><span class="icon-small icon-data-inputs-fail ts-dark-orange" title="Canceled"></span> Canceled</span>
+	<span ng-switch-when=""></span>
+	<span ng-switch-default><span class="icon-small icon-warning ts-dark-orange" title="Unknown status"></span> Status {{ @( Model.Item2 ).Status }}</span>
+</div>
+
+<ol>
+	<li ng-repeat="d in @( Model.Item2 ).StatusDetails | filter:stepDoneSomething" style="line-height: initial;">
+		Step <em>{{ d.ObjectName }}</em>:
+		{{ d.Processed }}&nbsp;processed<span ng-if="d.Matched != 0">,
+		{{ d.Matched }}&nbsp;matched</span><span ng-if="d.Created != 0">,
+		{{ d.Created }}&nbsp;created</span><span ng-if="d.Updated != 0">,
+		{{ d.Updated }}&nbsp;updated</span><span ng-if="d.Deleted != 0">, 
+		{{ d.Deleted }}&nbsp;deleted</span><span ng-if="d.Rejected != 0">,
+		<span class="ts-dark-orange">{{ d.Rejected }}&nbsp;rejected</span></span><span ng-if="d.Matched + d.Created + d.Updated + d.Rejected == 0">,
+		no records affected</span>
+	</li>
+</ol>

@@ -1,0 +1,117 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="189" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportAsset</SearchName>
+    <Description>Export FNMS Asset</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for assets
+                	SELECT  Asset.AssetID AS [AssetID],
+                        Asset.ShortDescription AS [ShortDescription],
+                        Asset.AssetTag AS [AssetTag],
+                        ComplianceComputer.ComputerName AS [ComputerName],
+                        AssetTypeI18N.AssetTypeName AS [AssetType],
+                        Asset.SerialNumber AS [SerialNumber],
+                        Asset.Manufacturer AS [Manufacturer],
+                        Asset.ModelNo AS [ModelNo],
+                        AcquisitionModeI18N.DefaultValue AS [AcquisitionMode],
+                        AssetStatusI18N.StatusDefaultValue AS [AssetStatus],
+                        AssetComplianceStatusI18N.StatusDefaultValue AS [AssetComplianceStatus],
+                        CAST(Asset.LeaseBuyoutCost * LeaseBuyoutCostRate.Rate AS money) AS [LeaseBuyoutCost],
+                        pt.PeriodTypeDefaultValue AS [ChargeBackFrequency],
+                        CAST(Asset.ChargeBackPrice * ChargeBackPriceRate.Rate AS money) AS [ChargeBackPrice],
+                        Asset.CreationUser AS [CreationUser],
+                        Asset.CreationDate AS [CreationDate],
+                        Asset.DeletionDate AS [DeletionDate],
+                        Asset.DeliveryDate AS [DeliveryDate],
+                        CAST(Asset.DepreciationCurrentValue * DepreciationCurrentValueRate.Rate AS money) AS [DepreciationCurrentValue],
+                        DepreciationMethodI18N.DefaultValue AS [DepreciationMethod],
+                        Asset.DepreciationPeriod AS [DepreciationPeriod],
+                        (Asset.DepreciationRate * 100) AS [DepreciationRate],
+                        CAST(Asset.DepreciationResidualValue * DepreciationResidualValueRate.Rate AS money) AS [DepreciationResidualValue],
+                        Asset.DisposalDate AS [DisposalDate],
+                        Asset.LeaseEndDate AS [LeaseEndDate],
+                        LeaseEndReason.ResourceName AS [LeaseEndReason],
+                        Asset.InstallationDate AS [InstallationDate],
+                        Asset.LeaseNo AS [LeaseNo],
+                        CAST(Asset.LeasePrice * LeasePriceRate.Rate AS money) AS [LeasePrice],
+                        Asset.ManufacturerPartNo AS [ManufacturerPartNo],
+                        ComplianceComputer.OperatingSystem AS [OperatingSystem],
+                        Asset.Comments AS [Comments],
+                        Asset.PartNo AS [PartNo],
+                        Asset.PrimaryPurchaseOrderNo AS [PrimaryPurchaseOrder],
+                        CAST(Asset.PurchasePrice * PurchasePriceRate.Rate AS money) AS [PurchasePrice],
+                        Asset.EndOfLifeRecipient AS [EndOfLifeRecipient],
+                        Asset.RequestNo AS [RequestNo],
+                        CAST(Asset.ResalePrice * ResalePriceRate.Rate AS money) AS [ResalePrice],
+                        Asset.RetirementDate AS [RetirementDate],
+                        EndOfLifeReason.ResourceName AS [EndOfLifeReason],
+                        Asset.LeaseStartDate AS [LeaseStartDate],
+                        ComplianceUser.UserName AS [User],
+                        Vendor.VendorName AS [VendorName],
+                        Asset.WarrantyExpirationDate AS [WarrantyExpiryDate],
+                        AssetWarrantyTypeI18N.WarrantyTypeDefaultValue AS [AssetWarrantyType],
+                        CAST(Asset.WrittenOffValue * WrittenOffValueRate.Rate AS money) AS [WrittenOffValue]
+                	FROM    Asset
+                			-- Filter
+                			INNER JOIN #AssetAllowed AS filter ON filter.AssetID = Asset.AssetID
+                			-- Additional joins
+                			LEFT OUTER JOIN ComplianceComputer ON ComplianceComputer.AssetID = Asset.AssetID
+                        LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID
+                        LEFT OUTER JOIN AcquisitionModeI18N ON AcquisitionModeI18N.AcquisitionModeID = ISNULL(Asset.AcquisitionModeID, 1)
+                        LEFT OUTER JOIN AssetStatusI18N ON AssetStatusI18N.AssetStatusID = Asset.AssetStatusID
+                        LEFT OUTER JOIN ComplianceComputer AS ComplianceComputer2 ON ComplianceComputer2.AssetID = Asset.AssetID LEFT OUTER JOIN AssetComplianceStatusI18N ON AssetComplianceStatusI18N.AssetComplianceStatusID = ComplianceComputer2.AssetComplianceStatusID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS LeaseBuyoutCostRate ON LeaseBuyoutCostRate.CurrencyRateID = Asset.LeaseBuyoutCostRateID
+                        LEFT OUTER JOIN PeriodTypeI18N AS pt ON pt.PeriodTypeID = Asset.ChargebackPeriodTypeID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS ChargeBackPriceRate ON ChargeBackPriceRate.CurrencyRateID = Asset.ChargeBackPriceRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS DepreciationCurrentValueRate ON DepreciationCurrentValueRate.CurrencyRateID = Asset.DepreciationCurrentValueRateID
+                        LEFT OUTER JOIN DepreciationMethodI18N ON DepreciationMethodI18N.DepreciationMethodID = Asset.DepreciationMethodID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS DepreciationResidualValueRate ON DepreciationResidualValueRate.CurrencyRateID = Asset.DepreciationResidualValueRateID
+                        LEFT OUTER JOIN LeaseEndReason ON LeaseEndReason.LeaseEndReasonID = Asset.LeaseEndReasonID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS LeasePriceRate ON LeasePriceRate.CurrencyRateID = Asset.LeasePriceRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS PurchasePriceRate ON PurchasePriceRate.CurrencyRateID = Asset.PurchasePriceRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS ResalePriceRate ON ResalePriceRate.CurrencyRateID = Asset.ResalePriceRateID
+                        LEFT OUTER JOIN EndOfLifeReason ON EndOfLifeReason.EndOfLifeReasonID = Asset.EndOfLifeReasonID
+                        LEFT OUTER JOIN dbo.ComplianceUser ON ComplianceUser.ComplianceUserID = Asset.AssignToUserId
+                        LEFT OUTER JOIN Vendor ON Vendor.VendorID = Asset.VendorID
+                        LEFT OUTER JOIN AssetWarrantyTypeI18N ON AssetWarrantyTypeI18N.AssetWarrantyTypeID = Asset.AssetWarrantyTypeID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS WrittenOffValueRate ON WrittenOffValueRate.CurrencyRateID = Asset.WrittenOffValueRateID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   [ShortDescription] LIKE '%' + words.Word + '%' ESCAPE '\'
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

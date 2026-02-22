@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="186" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicenseContracts</SearchName>
+    <Description>Export FNMS License Contracts.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+         slc.[SoftwareLicenseContractID]
+         ,slc.[SoftwareLicenseID]
+         ,sli.[Name] as [LicenseName]
+         ,sli.[Version] as [LicenseVersion]
+         ,sli.[Edition] as [LicenseEdition]
+         ,slc.[ContractID]
+         ,ci.[ContractNo]
+         ,ci.[ContractName]
+         ,ci.[ContractTypeDefaultValue] as [ContractType]
+         ,ci.[VendorName] as [ContractVendor]
+      FROM dbo.[SoftwareLicenseContract] as slc
+        JOIN dbo.[SoftwareLicenseInfo] as sli on sli.[SoftwareLicenseID] = slc.[SoftwareLicenseID]
+        JOIN dbo.[ContractInfo] as ci on ci.ContractID = slc.[ContractID]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

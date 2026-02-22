@@ -1,0 +1,754 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="6180" SearchName="090.01.01 Detailed Software Inventory" ComplianceSearchType="InstalledSoftware" ComplianceSearchFolderID="2861" CreatedByOperatorID="12" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Reporting which shows all software installed and where it is installed. Also shows commercial data elements from hardware asset record such as system name and associated physical location, assigned user and their relevant business unit + financials details</Description>
+    <FolderPath>BOQ</FolderPath>
+    <CreationDate>19/11/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate installed software that user is allowed access
+	CREATE TABLE #InstalledSoftwareAllowedComputer (ComplianceComputerID int PRIMARY KEY)
+
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'read')) = 1
+	BEGIN
+		INSERT	#InstalledSoftwareAllowedComputer
+		SELECT	tcc.ComplianceComputerID
+		FROM	TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL) tcc
+	END
+
+-- Pre-calculate computers that user is allowed access
+	CREATE TABLE #ComplianceComputerAllowed (ComplianceComputerID int PRIMARY KEY)
+	INSERT  #ComplianceComputerAllowed SELECT * FROM TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate users that user is allowed access
+	CREATE TABLE #ComplianceUserAllowed (ComplianceUserID int PRIMARY KEY)
+	INSERT  #ComplianceUserAllowed SELECT * FROM TableComplianceUserCurrentUser(NULL, NULL, NULL, NULL, 1)
+
+-- Pre-calculate software titles that user is allowed access
+	CREATE TABLE #SoftwareTitleAllowed (SoftwareTitleID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'list')) = 1
+	BEGIN
+			INSERT  #SoftwareTitleAllowed SELECT SoftwareTitleID FROM SoftwareTitle
+	END
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for installed software
+                	SELECT  InstalledSoftware.InstalledSoftwareID AS [InstalledSoftwareID],
+                        SoftwareTitle.FullName AS [ApplicationName],
+                        SoftwareTitleVersion.VersionName AS [ApplicationVersion],
+                        SoftwareTitlePublisher.PublisherName AS [ApplicationPublisher],
+                        ComplianceComputer.ComputerName AS [ComputerName],
+                        InstalledSoftware.IsUsed AS [IsUsed],
+                        InstalledSoftware.LastUsedDate AS [LastUsedDate],
+                        ISNULL(InstalledSoftware.InstallDate, InstalledSoftware.DiscoveryDate) AS [DiscoveryDate],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerID],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerName],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Domain],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventoryDate],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Location],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CorporateStructure],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CostCenter],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Environment],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_OperatingSystem],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_SerialNo],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerStatus],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerType],
+                        [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventorySourceType],
+                        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_UserID],
+                        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Account],
+                        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Email],
+                        [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_UserID],
+                        [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_Account],
+                        [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_UserID],
+                        [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_Account],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationID],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationName],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Edition],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ProductName],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Classification],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationVersion],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Publisher],
+                        [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Source]
+                	FROM    InstalledSoftware
+                			-- Filter
+                        INNER JOIN (SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID) AS filter ON filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID
+                			-- Additional joins
+                			LEFT OUTER JOIN SoftwareTitle ON SoftwareTitle.SoftwareTitleID = InstalledSoftware.SoftwareTitleID
+                        LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToVersionLink ON SoftwareTitleToVersionLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitleToVersionLink.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToProductLink ON SoftwareTitleToProductLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleProduct ON SoftwareTitleToProductLink.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID
+                        LEFT OUTER JOIN dbo.ComplianceComputer ON ComplianceComputer.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+                        -- Link from InstalledSoftware to Computer
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for computers
+                        				SELECT  ComplianceComputer.ComplianceComputerID AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerID],
+                        			        ComplianceComputer.ComputerName AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerName],
+                        			        cd.QualifiedName AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Domain],
+                        			        ComplianceComputer.InventoryDate AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventoryDate],
+                        			        Location.Path AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Location],
+                        			        CorporateStructure.Path AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CorporateStructure],
+                        			        CostCenter.Path AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CostCenter],
+                        			        [EnvironmentV].PropertyValue AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Environment],
+                        			        ComplianceComputer.OperatingSystem AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_OperatingSystem],
+                        			        ComplianceComputer.SerialNo AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_SerialNo],
+                        			        ComplianceComputerStatusI18N.DefaultValue AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerStatus],
+                        			        ComplianceComputerTypeI18N.DefaultValue AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerType],
+                        			        ComplianceComputerInventorySourceTypeI18N.DefaultValue AS [R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventorySourceType],
+                        			        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_UserID],
+                        			        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Account],
+                        			        [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Email],
+                        			        [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_UserID],
+                        			        [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_Account],
+                        			        [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_UserID],
+                        			        [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_Account]
+                        				FROM    dbo.ComplianceComputerWithActiveInventory AS ComplianceComputer
+                        						-- Filter
+                        						INNER JOIN #ComplianceComputerAllowed AS filter ON filter.ComplianceComputerID = ComplianceComputer.ComplianceComputerID
+                        						-- Additional joins
+                        						LEFT OUTER JOIN ComplianceDomain AS cd ON cd.ComplianceDomainID = ComplianceComputer.ComplianceDomainID
+                        			        LEFT OUTER JOIN GroupEx AS Location ON ComplianceComputer.LocationID = Location.GroupExID
+                        			        LEFT OUTER JOIN GroupEx AS CorporateStructure ON ComplianceComputer.BusinessUnitID = CorporateStructure.GroupExID
+                        			        LEFT OUTER JOIN GroupEx AS CostCenter ON ComplianceComputer.CostCenterID = CostCenter.GroupExID
+                        			        LEFT OUTER JOIN dbo.ComplianceComputerTypeProperty [EnvironmentT] ON ([EnvironmentT].ComplianceComputerTypeID = ComplianceComputer.ComplianceComputerTypeID AND [EnvironmentT].PropertyName = 'Environment')
+                        			        LEFT OUTER JOIN dbo.ComplianceComputerPropertyValue [EnvironmentV] ON ([EnvironmentV].ComplianceComputerID = ComplianceComputer.ComplianceComputerID AND [EnvironmentV].ComplianceComputerTypePropertyID = [EnvironmentT].ComplianceComputerTypePropertyID)
+                        			        LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N ON ComplianceComputerStatusI18N.ComplianceComputerStatusID = ComplianceComputer.ComplianceComputerStatusID
+                        			        LEFT OUTER JOIN dbo.ComplianceComputerTypeI18N ON ComplianceComputerTypeI18N.ComplianceComputerTypeID = ComplianceComputer.ComplianceComputerTypeID
+                        			        LEFT OUTER JOIN dbo.ComplianceComputerInventorySourceTypeI18N ON ComplianceComputerInventorySourceTypeI18N.ComplianceComputerInventorySourceTypeID = ComplianceComputer.ComplianceComputerInventorySourceTypeID
+                        			        -- Link from Computer to Calculated User
+                        			        	LEFT OUTER JOIN (
+                        			        			-- Custom view query for users
+                        			        				SELECT  ComplianceUser.ComplianceUserID AS [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_UserID],
+                        			        			        [ComplianceUser].SAMAccountName AS [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Account],
+                        			        			        ComplianceUser.Email AS [R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Email]
+                        			        				FROM    ComplianceUser
+                        			        						-- Filter
+                        			        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        			        						-- Additional joins
+                        			        	) AS ComputerToCalculatedUser ON ComputerToCalculatedUser.R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_UserID = ComplianceComputer.CalculatedUserID
+                        			        -- Link from Computer to Assigned User
+                        			        	LEFT OUTER JOIN (
+                        			        			-- Custom view query for users
+                        			        				SELECT  ComplianceUser.ComplianceUserID AS [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_UserID],
+                        			        			        [ComplianceUser].SAMAccountName AS [R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_Account]
+                        			        				FROM    ComplianceUser
+                        			        						-- Filter
+                        			        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        			        						-- Additional joins
+                        			        	) AS ComputerToAssignedUser ON ComputerToAssignedUser.R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_UserID = ComplianceComputer.AssignedUserID
+                        			        -- Link from Computer to Last Logged On User
+                        			        	LEFT OUTER JOIN (
+                        			        			-- Custom view query for users
+                        			        				SELECT  ComplianceUser.ComplianceUserID AS [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_UserID],
+                        			        			        [ComplianceUser].SAMAccountName AS [R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_Account]
+                        			        				FROM    ComplianceUser
+                        			        						-- Filter
+                        			        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        			        						-- Additional joins
+                        			        	) AS ComputerToLastLoggedOnUser ON ComputerToLastLoggedOnUser.R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_UserID = ComplianceComputer.ComplianceUserID
+                        	) AS InstallationToComputer ON InstallationToComputer.R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerID = InstalledSoftware.ComplianceComputerID
+                        -- Link from InstalledSoftware to Application
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for software titles
+                        				SELECT  SoftwareTitle.SoftwareTitleID AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationID],
+                        			        SoftwareTitle.FullName AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationName],
+                        			        ISNULL(Edition.EditionName, '') AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Edition],
+                        			        Product.ProductName AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ProductName],
+                        			        SoftwareTitleClassificationI18N.DefaultValue AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Classification],
+                        			        SoftwareTitleVersion.VersionName AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationVersion],
+                        			        SoftwareTitlePublisher.PublisherName AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Publisher],
+                        			        (CASE WHEN Apl.CustomSource =0 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Local')) WHEN Apl.CustomSource =1 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Flexera')) WHEN Apl.CustomSource =2 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Extended')) END) AS [R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Source]
+                        				FROM    SoftwareTitle
+                        						-- Filter
+                        						INNER JOIN #SoftwareTitleAllowed AS filter ON filter.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        						-- Additional joins
+                        						LEFT OUTER JOIN SoftwareTitleEdition AS Edition ON SoftwareTitle.SoftwareTitleEditionID = Edition.SoftwareTitleEditionID
+                        			        LEFT OUTER JOIN SoftwareTitleProduct AS Product ON SoftwareTitle.SoftwareTitleProductID = Product.SoftwareTitleProductID
+                        			        LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID
+                        			        LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        			        INNER JOIN SoftwareTitleProduct ON SoftwareTitle.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID
+                        			        LEFT OUTER JOIN ApplicationsList AS Apl ON SoftwareTitle.SoftwareTitleID = Apl.SoftwareTitleID
+                        	) AS InstallationToApplication ON InstallationToApplication.R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationID = InstalledSoftware.SoftwareTitleID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ApplicationVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ApplicationPublisher] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ComputerName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15400" ColumnName="InstalledSoftware.InstalledSoftwareID" ColumnNameResourceName="ComplianceSearchTypeColumn.InstalledSoftwareID" SelectName="InstalledSoftware.InstalledSoftwareID" WhereClause="InstalledSoftware.InstalledSoftwareID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="609" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>InstalledSoftwareID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15403" ColumnName="InstalledSoftware.ApplicationName" ColumnNameResourceName="ComplianceSearchTypeColumn.InstalledApplicationName" FromTable="LEFT OUTER JOIN SoftwareTitle ON SoftwareTitle.SoftwareTitleID = InstalledSoftware.SoftwareTitleID" SelectName="SoftwareTitle.FullName" WhereClause="SoftwareTitle.FullName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>2</Index>
+    <FieldName>ApplicationName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15404" ColumnName="InstalledSoftware.ApplicationVersion" ColumnNameResourceName="ComplianceSearchTypeColumn.InstalledApplicationVersion" FromTable="LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToVersionLink ON SoftwareTitleToVersionLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitleToVersionLink.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID" SelectName="SoftwareTitleVersion.VersionName" WhereClause="SoftwareTitleVersion.VersionName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>3</Index>
+    <FieldName>ApplicationVersion</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15408" ColumnName="InstalledSoftware.ApplicationPublisher" ColumnNameResourceName="ComplianceSearchTypeColumn.InstalledApplicationPublisher" FromTable="LEFT OUTER JOIN SoftwareTitle AS SoftwareTitleToProductLink ON SoftwareTitleToProductLink.SoftwareTitleID = InstalledSoftware.SoftwareTitleID LEFT OUTER JOIN SoftwareTitleProduct ON SoftwareTitleToProductLink.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID" SelectName="SoftwareTitlePublisher.PublisherName" WhereClause="SoftwareTitlePublisher.PublisherName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>5</Index>
+    <FieldName>ApplicationPublisher</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15405" ColumnName="InstalledSoftware.ComputerName" ColumnNameResourceName="ComplianceSearchTypeColumn.ComputerName" FromTable="LEFT OUTER JOIN dbo.ComplianceComputer ON ComplianceComputer.ComplianceComputerID = InstalledSoftware.ComplianceComputerID" SelectName="ComplianceComputer.ComputerName" WhereClause="ComplianceComputer.ComputerName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>21</Index>
+    <FieldName>ComputerName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15401" ColumnName="InstalledSoftware.IsUsed" ColumnNameResourceName="ComplianceSearchTypeColumn.IsUsed" SelectName="InstalledSoftware.IsUsed" WhereClause="InstalledSoftware.IsUsed" FilterGroupType="7" DefaultFilterType="7" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>15</Index>
+    <FieldName>IsUsed</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15411" ColumnName="InstalledSoftware.LastUsedDate" ColumnNameResourceName="ComplianceSearchTypeColumn.LastUsedDate" SelectName="InstalledSoftware.LastUsedDate" WhereClause="InstalledSoftware.LastUsedDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>16</Index>
+    <FieldName>LastUsedDate</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15410" ColumnName="InstalledSoftware.DiscoveryDate" ColumnNameResourceName="ComplianceSearchTypeColumn.DiscoveryDate" SelectName="ISNULL(InstalledSoftware.InstallDate, InstalledSoftware.DiscoveryDate)" WhereClause="ISNULL(InstalledSoftware.InstallDate, InstalledSoftware.DiscoveryDate)" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="609" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>19</Index>
+    <FieldName>DiscoveryDate</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>InstalledSoftware</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15127" ColumnName="Computer.ComputerID" ColumnNameResourceName="ComplianceSearchTypeColumn.ComputerID" SelectName="ComplianceComputer.ComplianceComputerID" WhereClause="ComplianceComputer.ComplianceComputerID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="606" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="ComputerProperties" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="ComputerType,InventorySourceType" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15128" ColumnName="Computer.ComputerName" ColumnNameResourceName="ComplianceSearchTypeColumn.ComputerName" SelectName="ComplianceComputer.ComputerName" WhereClause="ComplianceComputer.ComputerName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="ComputerProperties" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>0</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15129" ColumnName="Computer.Domain" ColumnNameResourceName="ComplianceSearchTypeColumn.Domain" FromTable="LEFT OUTER JOIN ComplianceDomain AS cd ON cd.ComplianceDomainID = ComplianceComputer.ComplianceDomainID" SelectName="cd.QualifiedName" WhereClause="cd.QualifiedName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>1</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Domain</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15166" ColumnName="Computer.InventoryDate" ColumnNameResourceName="ComplianceSearchTypeColumn.InventoryDate" SelectName="ComplianceComputer.InventoryDate" WhereClause="ComplianceComputer.InventoryDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>8</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventoryDate</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15130" ColumnName="Computer.Location" ColumnNameResourceName="ComplianceSearchTypeColumn.Location" FromTable="LEFT OUTER JOIN GroupEx AS Location ON ComplianceComputer.LocationID = Location.GroupExID" SelectName="Location.Path" WhereClause="Location.GroupExID" SelectOptionsSQL="SELECT DISTINCT g.GroupExID AS [ID],'' AS ResourceName, g.Path AS DefaultName FROM GroupEx AS g JOIN TableGetAccessibleGroups('CMEnterprise','read') as a ON a.GroupExID = g.GroupExID WHERE a.GroupTypeID = 1 AND g.BusinessView = 0 AND a.UserHasAccess=1 ORDER BY Path" FilterGroupType="5" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>12</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Location</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15131" ColumnName="Computer.CorporateStructure" ColumnNameResourceName="ComplianceSearchTypeColumn.CorporateStructure" FromTable="LEFT OUTER JOIN GroupEx AS CorporateStructure ON ComplianceComputer.BusinessUnitID = CorporateStructure.GroupExID" SelectName="CorporateStructure.Path" WhereClause="CorporateStructure.GroupExID" SelectOptionsSQL="SELECT DISTINCT g.GroupExID AS [ID],'' AS ResourceName, g.Path AS DefaultName FROM GroupEx AS g JOIN TableGetAccessibleGroups('CMEnterprise','read') as a ON a.GroupExID = g.GroupExID WHERE a.GroupTypeID = 2 AND g.BusinessView = 0 AND a.UserHasAccess=1 ORDER BY Path" FilterGroupType="5" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>13</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CorporateStructure</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15132" ColumnName="Computer.CostCenter" ColumnNameResourceName="ComplianceSearchTypeColumn.CostCenter" FromTable="LEFT OUTER JOIN GroupEx AS CostCenter ON ComplianceComputer.CostCenterID = CostCenter.GroupExID" SelectName="CostCenter.Path" WhereClause="CostCenter.GroupExID" SelectOptionsSQL="SELECT DISTINCT g.GroupExID AS [ID],'' AS ResourceName, g.Path AS DefaultName FROM GroupEx AS g JOIN TableGetAccessibleGroups('CMEnterprise','read') as a ON a.GroupExID = g.GroupExID WHERE a.GroupTypeID = 3 AND g.BusinessView = 0 AND a.UserHasAccess=1 ORDER BY Path" FilterGroupType="5" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>14</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_CostCenter</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15589" ColumnName="ComplianceComputerCustom.Environment" ColumnNameResourceName="ComplianceSearchTypeColumn.Environment" FromTable="&#xD;&#xA;    LEFT OUTER JOIN dbo.ComplianceComputerTypeProperty [{NAMESPACE}EnvironmentT] ON ([{NAMESPACE}EnvironmentT].ComplianceComputerTypeID = {NAMESPACE}ComplianceComputer.ComplianceComputerTypeID AND [{NAMESPACE}EnvironmentT].PropertyName = 'Environment')&#xD;&#xA;    LEFT OUTER JOIN dbo.ComplianceComputerPropertyValue [{NAMESPACE}EnvironmentV] ON ([{NAMESPACE}EnvironmentV].ComplianceComputerID = {NAMESPACE}ComplianceComputer.ComplianceComputerID AND [{NAMESPACE}EnvironmentV].ComplianceComputerTypePropertyID = [{NAMESPACE}EnvironmentT].ComplianceComputerTypePropertyID)" SelectName="[{NAMESPACE}EnvironmentV].PropertyValue" WhereClause="[{NAMESPACE}EnvironmentV].PropertyValue" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="true" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>20</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_Environment</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15150" ColumnName="Computer.OperatingSystem" ColumnNameResourceName="ComplianceSearchTypeColumn.OperatingSystem" SelectName="ComplianceComputer.OperatingSystem" WhereClause="ComplianceComputer.OperatingSystem" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>24</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_OperatingSystem</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15165" ColumnName="Computer.SerialNo" ColumnNameResourceName="ComplianceSearchTypeColumn.SerialNumber" SelectName="ComplianceComputer.SerialNo" WhereClause="ComplianceComputer.SerialNo" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>26</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_SerialNo</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15172" ColumnName="Computer.ComputerStatus" ColumnNameResourceName="ComplianceSearchTypeColumn.ComputerStatus" FromTable="LEFT OUTER JOIN dbo.ComplianceComputerStatusI18N ON ComplianceComputerStatusI18N.ComplianceComputerStatusID = ComplianceComputer.ComplianceComputerStatusID" SelectName="ComplianceComputerStatusI18N.DefaultValue" WhereClause="ComplianceComputer.ComplianceComputerStatusID" SelectOptionsSQL="SELECT DISTINCT ComplianceComputerStatusID AS [ID], ResourceName, DefaultValue AS DefaultName FROM dbo.ComplianceComputerStatusI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>28</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerStatus</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15171" ColumnName="Computer.ComputerType" ColumnNameResourceName="ComplianceSearchTypeColumn.ComputerType" FromTable="LEFT OUTER JOIN dbo.ComplianceComputerTypeI18N ON ComplianceComputerTypeI18N.ComplianceComputerTypeID = ComplianceComputer.ComplianceComputerTypeID" SelectName="ComplianceComputerTypeI18N.DefaultValue" WhereClause="ComplianceComputer.ComplianceComputerTypeID" SelectOptionsSQL="SELECT DISTINCT ComplianceComputerTypeID AS [ID], ResourceName, DefaultValue AS DefaultName FROM dbo.ComplianceComputerTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_ComputerType</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15174" ColumnName="Computer.InventorySourceType" ColumnNameResourceName="ComplianceSearchTypeColumn.InventorySourceType" FromTable="LEFT OUTER JOIN dbo.ComplianceComputerInventorySourceTypeI18N ON ComplianceComputerInventorySourceTypeI18N.ComplianceComputerInventorySourceTypeID = ComplianceComputer.ComplianceComputerInventorySourceTypeID" SelectName="ComplianceComputerInventorySourceTypeI18N.DefaultValue" WhereClause="ComplianceComputer.ComplianceComputerInventorySourceTypeID" SelectOptionsSQL="SELECT DISTINCT ComplianceComputerInventorySourceTypeID AS [ID], ResourceName, DefaultValue AS DefaultName FROM dbo.ComplianceComputerInventorySourceTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="606" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_5132ea92c263fdba5ec93940f2e3862c_InstallationToComputer_InventorySourceType</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Computer</ParentName>
+    <RelationName>InstallationToComputer</RelationName>
+    <RelationPath>InstallationToComputer</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15078" ColumnName="User.UserID" ColumnNameResourceName="ComplianceSearchTypeColumn.UserID" SelectName="ComplianceUser.ComplianceUserID" WhereClause="ComplianceUser.ComplianceUserID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="605" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Users" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_UserID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToCalculatedUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToCalculatedUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15188" ColumnName="User.Account" ColumnNameResourceName="ComplianceSearchTypeColumn.Account" SelectName="[ComplianceUser].SAMAccountName" WhereClause="[ComplianceUser].SAMAccountName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="605" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>10</Index>
+    <FieldName>R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Account</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToCalculatedUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToCalculatedUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15114" ColumnName="User.Email" ColumnNameResourceName="ComplianceSearchTypeColumn.Email" SelectName="ComplianceUser.Email" WhereClause="ComplianceUser.Email" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="605" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>17</Index>
+    <FieldName>R3_47dd9020a3e6788f4dc03326e6315a70_ComputerToCalculatedUser_Email</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToCalculatedUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToCalculatedUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15078" ColumnName="User.UserID" ColumnNameResourceName="ComplianceSearchTypeColumn.UserID" SelectName="ComplianceUser.ComplianceUserID" WhereClause="ComplianceUser.ComplianceUserID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="605" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Users" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_UserID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToAssignedUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToAssignedUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15188" ColumnName="User.Account" ColumnNameResourceName="ComplianceSearchTypeColumn.Account" SelectName="[ComplianceUser].SAMAccountName" WhereClause="[ComplianceUser].SAMAccountName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="605" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>11</Index>
+    <FieldName>R3_89ab5105110ae6c27f20bd79bd7bf388_ComputerToAssignedUser_Account</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToAssignedUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToAssignedUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15078" ColumnName="User.UserID" ColumnNameResourceName="ComplianceSearchTypeColumn.UserID" SelectName="ComplianceUser.ComplianceUserID" WhereClause="ComplianceUser.ComplianceUserID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="605" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Users" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_UserID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToLastLoggedOnUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToLastLoggedOnUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15188" ColumnName="User.Account" ColumnNameResourceName="ComplianceSearchTypeColumn.Account" SelectName="[ComplianceUser].SAMAccountName" WhereClause="[ComplianceUser].SAMAccountName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="605" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>18</Index>
+    <FieldName>R3_2b3cff0b49a0d1485d14a77b95941767_ComputerToLastLoggedOnUser_Account</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>3</QueryDepth>
+    <ParentName>User</ParentName>
+    <RelationName>ComputerToLastLoggedOnUser</RelationName>
+    <RelationPath>InstallationToComputer.ComputerToLastLoggedOnUser</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15068" ColumnName="SoftwareTitle.ApplicationID" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationID" SelectName="SoftwareTitle.SoftwareTitleID" WhereClause="SoftwareTitle.SoftwareTitleID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="604" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Applications" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15069" ColumnName="SoftwareTitle.ApplicationName" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationName" SelectName="SoftwareTitle.FullName" WhereClause="SoftwareTitle.FullName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Applications" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>23</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15076" ColumnName="SoftwareTitle.Edition" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareTitleEdition" FromTable="LEFT OUTER JOIN SoftwareTitleEdition AS Edition ON SoftwareTitle.SoftwareTitleEditionID = Edition.SoftwareTitleEditionID" SelectName="ISNULL(Edition.EditionName, '')" WhereClause="Edition.EditionName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>4</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Edition</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15075" ColumnName="SoftwareTitle.ProductName" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareTitleProductName" FromTable="LEFT OUTER JOIN SoftwareTitleProduct AS Product ON SoftwareTitle.SoftwareTitleProductID = Product.SoftwareTitleProductID" SelectName="Product.ProductName" WhereClause="Product.ProductName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>6</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ProductName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15072" ColumnName="SoftwareTitle.Classification" ColumnNameResourceName="ComplianceSearchTypeColumn.Classification" FromTable="LEFT OUTER JOIN SoftwareTitleClassificationI18N ON SoftwareTitleClassificationI18N.SoftwareTitleClassificationID = SoftwareTitle.SoftwareTitleClassificationID" SelectName="SoftwareTitleClassificationI18N.DefaultValue" WhereClause="SoftwareTitleClassificationI18N.SoftwareTitleClassificationID" SelectOptionsSQL="SELECT DISTINCT SoftwareTitleClassificationID AS [ID], ResourceName, DefaultValue AS DefaultName from dbo.SoftwareTitleClassificationI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>7</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Classification</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15070" ColumnName="SoftwareTitle.ApplicationVersion" ColumnNameResourceName="ComplianceSearchTypeColumn.ApplicationVersion" FromTable="LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID" SelectName="SoftwareTitleVersion.VersionName" WhereClause="SoftwareTitleVersion.VersionName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>9</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_ApplicationVersion</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15071" ColumnName="SoftwareTitle.Publisher" ColumnNameResourceName="ComplianceSearchTypeColumn.Publisher" FromTable="INNER JOIN SoftwareTitleProduct ON SoftwareTitle.SoftwareTitleProductID = SoftwareTitleProduct.SoftwareTitleProductID LEFT OUTER JOIN SoftwareTitlePublisher ON SoftwareTitleProduct.SoftwareTitlePublisherID = SoftwareTitlePublisher.SoftwareTitlePublisherID" SelectName="SoftwareTitlePublisher.PublisherName" WhereClause="SoftwareTitlePublisher.PublisherName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>25</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Publisher</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="16596" ColumnName="SoftwareTitle.Source" ColumnNameResourceName="ComplianceSearchTypeColumn.Source" FromTable="LEFT OUTER JOIN ApplicationsList AS Apl ON SoftwareTitle.SoftwareTitleID = Apl.SoftwareTitleID" SelectName="(CASE WHEN Apl.CustomSource =0 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Local')) WHEN Apl.CustomSource =1 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Flexera')) WHEN Apl.CustomSource =2 THEN (SELECT ResourceValue FROM dbo.GetTranslation('CustomSource.Extended')) END)" WhereClause="Apl.CustomSource" SelectOptionsSQL="SELECT Convert(int,((ROW_NUMBER() OVER(ORDER BY ResourceString DESC)-1))) AS ID,ResourceString AS ResourceName ,ResourceValue AS DefaultName FROM ComplianceTranslation WHERE ResourceString LIKE 'CustomSource.%'" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="604" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>27</Index>
+    <FieldName>R2_51a71253efbabf8e3d6d91e83e042599_InstallationToApplication_Source</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>SoftwareTitle</ParentName>
+    <RelationName>InstallationToApplication</RelationName>
+    <RelationPath>InstallationToApplication</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+</ArrayOfCustomViewColumnMapping>
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+<customview>
+  <!--Custom view properties-->
+  <name>090.01.01 Detailed Software Inventory</name>
+  <description>Reporting which shows all software installed and where it is installed. Also shows commercial data elements from hardware asset record such as system name and associated physical location, assigned user and their relevant business unit + financials details</description>
+  <schemaVersion>2.0</schemaVersion>
+  <productVersion>13.1.1</productVersion>
+  <!--Master custom view object-->
+  <object name="InstalledSoftware" major="true">
+    <column index="2" name="InstalledSoftware.ApplicationName" show="true" match="PartialMatch" />
+    <column index="3" name="InstalledSoftware.ApplicationVersion" show="true" match="PartialMatch" />
+    <column index="5" name="InstalledSoftware.ApplicationPublisher" show="true" match="PartialMatch" />
+    <column index="15" name="InstalledSoftware.IsUsed" show="true" match="Excluded" />
+    <column index="16" name="InstalledSoftware.LastUsedDate" show="true" match="Excluded" />
+    <column index="19" name="InstalledSoftware.DiscoveryDate" show="false" match="Excluded" />
+    <column index="21" name="InstalledSoftware.ComputerName" show="false" match="PartialMatch" />
+    <!--Linked InstallationToComputer-->
+    <relation name="InstallationToComputer">
+      <object name="Computer">
+        <column index="0" name="Computer.ComputerName" show="true" match="Excluded" />
+        <column index="1" name="Computer.Domain" show="true" match="Excluded" />
+        <column index="8" name="Computer.InventoryDate" show="true" match="Excluded" />
+        <column index="12" name="Computer.Location" show="true" match="Excluded" />
+        <column index="13" name="Computer.CorporateStructure" show="true" match="Excluded" />
+        <column index="14" name="Computer.CostCenter" show="true" match="Excluded" />
+        <column index="20" name="ComplianceComputerCustom.Environment" show="false" match="Excluded" />
+        <column index="24" name="Computer.OperatingSystem" show="false" match="Excluded" />
+        <column index="26" name="Computer.SerialNo" show="false" match="Excluded" />
+        <column index="28" name="Computer.ComputerStatus" show="false" match="Excluded" />
+      </object>
+    </relation>
+    <!--Linked InstallationToApplication-->
+    <relation name="InstallationToApplication">
+      <object name="SoftwareTitle">
+        <column index="4" name="SoftwareTitle.Edition" show="true" match="Excluded" />
+        <column index="6" name="SoftwareTitle.ProductName" show="true" match="Excluded" />
+        <column index="7" name="SoftwareTitle.Classification" show="true" match="Excluded" />
+        <column index="9" name="SoftwareTitle.ApplicationVersion" show="true" match="Excluded" />
+        <column index="23" name="SoftwareTitle.ApplicationName" show="false" match="Excluded" />
+        <column index="25" name="SoftwareTitle.Publisher" show="false" match="Excluded" />
+        <column index="27" name="SoftwareTitle.Source" show="false" match="Excluded" />
+      </object>
+    </relation>
+    <!--Linked InstallationToComputer-->
+    <relation name="InstallationToComputer">
+      <object name="Computer" major="true">
+        <column index="22" name="Computer.ComputerName" show="false" match="PartialMatch" />
+        <!--Linked ComputerToCalculatedUser-->
+        <relation name="ComputerToCalculatedUser">
+          <object name="User">
+            <column index="10" name="User.Account" show="true" match="Excluded" />
+            <column index="17" name="User.Email" show="true" match="Excluded" />
+          </object>
+        </relation>
+        <!--Linked ComputerToAssignedUser-->
+        <relation name="ComputerToAssignedUser">
+          <object name="User">
+            <column index="11" name="User.Account" show="true" match="Excluded" />
+          </object>
+        </relation>
+        <!--Linked ComputerToLastLoggedOnUser-->
+        <relation name="ComputerToLastLoggedOnUser">
+          <object name="User">
+            <column index="18" name="User.Account" show="false" match="Excluded" />
+          </object>
+        </relation>
+      </object>
+    </relation>
+  </object>
+</customview>
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

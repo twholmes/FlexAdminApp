@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Excluded file evidence</SearchName>
+    <Description>This report lists raw file evidence that has been excluded from app recognition processing.</Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        WITH DATA AS
+        (
+          SELECT
+            cefe.[ComplianceConnectionID]
+            ,cc.[ConnectionName]
+            ,cefe.[FileName]
+            ,cefe.[FileVersion]
+            ,cefe.[FilePathID]  
+            ,cefe.[FilePath]
+            ,cefe.[Company]
+            ,cefe.[Description]
+            ,cefe.[ProductVersion]
+            ,cefe.[ProductName]
+            ,cefe.[FileSize]
+            ,cefe.[Language]
+          FROM dbo.[CustomExcludedFileEvidence] cefe
+            JOIN dbo.[ComplianceConnection] AS cc ON cc.[ComplianceConnectionID] = cefe.[ComplianceConnectionID]
+        )
+        SELECT
+          d.[ConnectionName]
+          ,d.[FileName]
+          ,d.[FileVersion]
+          ,d.[FilePath]
+          ,d.[Company]
+          ,d.[Description]
+          ,d.[ProductVersion]
+          ,d.[ProductName]
+          ,d.[FileSize]
+          ,d.[Language]
+        FROM
+          DATA d
+        ORDER BY 
+          d.[FileName], d.[FileVersion], d.[FilePath], d.[ConnectionName]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ConnectionName,FileName,FileVersion,FilePath,Company,Description,ProductVersion,ProductName,FileSize,Language
+    </SearchColumns>          
+  </Report>
+</CustomReports>

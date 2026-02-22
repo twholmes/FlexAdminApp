@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="LicensePositions" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Custom view that extends FNMS standard License Position report</Description>
+    <ViewName>CustomViewLicensePositionsEx</ViewName>
+    <FolderName></FolderName>
+    <FolderPath>Custom Views</FolderPath>
+    <CreationDate>12/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT
+  sl.SoftwareLicenseID AS [SoftwareLicenseID]
+  ,sl.Name AS [Name]
+  ,ISNULL(sl.Version,'') AS [Version]
+  ,ISNULL(sl.Edition,'') AS [Edition]
+  ,ISNULL(sl.VendorName,'') AS [PublisherName]
+  ,ISNULL(slp.ProductName,'') AS [ProductName]
+  ,sl.TypeDefaultValue AS [LicenseType]
+  ,sl.SoftwareLicenseMetricID
+  ,case
+     -- custom metrics
+     when slmx.[LicenseMetric] is not null then slmx.[LicenseMetric]
+     -- microsoft types
+     when sl.TypeDefaultValue like 'Microsoft Server%' and sl.Edition = 'Datacenter' then 'Datacenter Server'
+     when sl.TypeDefaultValue like 'Microsoft Server%' and sl.Edition = 'Standard' then 'Standard Server'
+     -- generic types
+     when sl.TypeDefaultValue = 'User' or sl.TypeDefaultValue = 'Named User' then 'User'
+     when sl.TypeDefaultValue = 'Volume' or sl.TypeDefaultValue = 'Device' then 'Device'       
+     else ''
+   end [LicenseMetric]
+  ,sl.ComplianceStatus
+  ,sl.NumberPurchased AS [Purchased]
+  ,sl.NumberInstalled AS [Consumed]
+  ,sl.NumberCalculated
+  ,sl.NumberUsed -- AS [Used]
+  ,(sl.NumberPurchased - sl.NumberInstalled) AS [ShortfallAvailability]
+  ,case
+     when ISNULL(sl.[PurchasePrice],0) > 0 THEN sl.[PurchasePrice]
+     else ISNULL(lpo.AvUnitPrice,0) 
+   end AS [UnitPrice]
+  ,ISNULL(sl.[ChargeBackPrice],0) AS [ChargeBackPrice]         
+  ,case
+     when ISNULL(sl.NumberInstalled*sl.[PurchasePrice],0) > 0 THEN sl.[PurchasePrice]
+     else ISNULL(sl.NumberInstalled*lpo.AvUnitPrice,0) 
+   end AS [ConsumedValue]
+  ,case
+     when sl.NumberPurchased - sl.NumberInstalled > 0 then ''
+     when ISNULL(sl.[PurchasePrice],0) > 0 THEN CONVERT(nvarchar(20),-(sl.NumberPurchased - sl.NumberInstalled) * sl.[PurchasePrice])
+     when ISNULL(lpo.AvUnitPrice,0) > 0 THEN CONVERT(nvarchar(20),-(sl.NumberPurchased - sl.NumberInstalled) * lpo.AvUnitPrice)
+     else ''
+   end AS [TrueUpCost]
+  ,case
+     when sl.NumberInstalled - sl.NumberPurchased > 0 then ''
+     when ISNULL(sl.[PurchasePrice],0) > 0 THEN CONVERT(nvarchar(20),-(sl.NumberInstalled - sl.NumberPurchased) * sl.[PurchasePrice])
+     when ISNULL(lpo.AvUnitPrice,0) > 0 THEN CONVERT(nvarchar(20),-(sl.NumberInstalled - sl.NumberPurchased) * lpo.AvUnitPrice)
+     else ''
+   end AS [OverStockCost]
+  ,sl.ParentLicenseID AS [ParentLicenseID]
+  ,case
+       when sl.NumberInstalled > sl.NumberPurchased then 'Red'
+       when 1.2*sl.NumberInstalled > sl.NumberPurchased then 'Amber'
+	   when sl.NumberPurchased > 1.2*sl.NumberInstalled then 'Amber'
+	   else 'Green'
+  end AS [RiskStatus]
+FROM 
+(
+  -- Software License (current user filtered)
+  SELECT 
+    slcus.*
+    ,pub.VendorName
+    ,slt.TypeDefaultValue
+    ,slcs.StatusDefaultValue AS [ComplianceStatus]
+  FROM SoftwareLicenseCurrentUserScoped AS slcus
+    JOIN SoftwareLicenseComplianceStatusI18N AS slcs ON slcs.SoftwareLicenseComplianceStatusID = slcus.SoftwareLicenseComplianceStatusID
+    LEFT OUTER JOIN Vendor AS pub ON pub.VendorID = slcus.PublisherID
+    LEFT OUTER JOIN SoftwareLicenseTypeI18N AS slt ON slt.SoftwareLicenseTypeID = slcus.LicenseTypeID
+) AS sl
+  -- Additional joins
+  LEFT OUTER JOIN 
+  (
+    SELECT 
+      slp_maxed.SoftwareLicenseID, 
+      CASE 
+        WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName 
+        ELSE ( SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple') ) 
+      END AS ProductName 
+    FROM 
+    (
+      SELECT 
+        slp_inner.SoftwareLicenseID, 
+        MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, 
+        COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount 
+      FROM dbo.SoftwareLicenseProduct AS slp_inner 
+      WHERE slp_inner.Supplementary = 0 
+      GROUP BY slp_inner.SoftwareLicenseID
+    ) AS slp_maxed 
+    INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID
+  ) slp ON slp.SoftwareLicenseID = sl.SoftwareLicenseID
+  -- Purchase Orders
+  LEFT OUTER JOIN 
+  (      
+    SELECT
+      lpox.SoftwareLicenseID
+      ,SUM(lpox.Quantity * lpox.UnitPrice) AS TotalPrice
+      ,SUM(lpox.Quantity) AS TotalQuantity
+      ,case 
+         when SUM(lpox.UnitPrice) is NULL THEN 0
+         when SUM(lpox.UnitPrice) = 0 THEN 0
+         when SUM(lpox.Quantity) = 0 THEN 0
+         else SUM(lpox.Quantity * lpox.UnitPrice) / SUM(lpox.Quantity)
+       end as AvUnitPrice
+    FROM 
+    (
+      SELECT 
+        lpo_inner.SoftwareLicenseID
+        ,lpo_inner.Quantity
+        ,lpo_inner.UnitPrice
+      FROM
+      (
+        SELECT
+          slpodi.[SoftwareLicenseID]
+          ,sl.[Name]
+          ,slpodi.[PurchaseOrderID]
+          ,slpodi.[PurchaseOrderDetailID]
+          ,slpodi.[PurchaseOrderNo]
+          ,pod.[SequenceNumber]
+          ,slpodi.[PurchaseOrderDetailItemDescription]
+          --,slpodi.[PurchaseOrderDetailQuantity]
+          ,pod.PurchaseOrderDetailTypeID
+          ,pod.Quantity
+          ,pod.LicenseQuantity
+          ,pod.UnitPrice
+          ,pod.TotalPrice
+          ,slpodi.[PurchaseOrderDetailLicensePartNo]
+          ,v.[VendorName]
+          ,slpodi.[PurchaseOrderDate]
+        FROM dbo.[SoftwareLicensePurchaseOrderDetailInfo] as slpodi
+          JOIN dbo.[SoftwareLicense] as sl on sl.[SoftwareLicenseID] = slpodi.[SoftwareLicenseID]
+          JOIN dbo.[PurchaseOrderDetail] as pod on pod.[PurchaseOrderDetailID] = slpodi.[PurchaseOrderDetailID]
+          JOIN dbo.[PurchaseOrder] as po on po.[PurchaseOrderID] = slpodi.[PurchaseOrderID]
+          JOIN dbo.[Vendor] as v on v.[VendorID] = po.[VendorID]
+        WHERE pod.PurchaseOrderDetailTypeID = 2
+      ) as lpo_inner
+    ) lpox
+    GROUP BY lpox.SoftwareLicenseID       
+  ) AS lpo ON lpo.SoftwareLicenseID = sl.SoftwareLicenseID
+  -- License Metrics
+  LEFT OUTER JOIN 
+  (      
+    SELECT
+      slm.[SoftwareLicenseMetricID]
+      ,slm.[SoftwareLicenseTypeID]
+      ,slm.[ResourceName]
+      ,rsct.ResourceValue AS [LicenseMetric]
+      ,slm.[DefaultValue]
+    FROM [dbo].[SoftwareLicenseMetric] AS slm
+      JOIN [dbo].[ResourceStringCultureType] AS rsct ON rsct.ResourceString = slm.ResourceName and rsct.CultureType = 'en-US'
+  ) AS slmx ON slmx.SoftwareLicenseMetricID = sl.SoftwareLicenseMetricID
+
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

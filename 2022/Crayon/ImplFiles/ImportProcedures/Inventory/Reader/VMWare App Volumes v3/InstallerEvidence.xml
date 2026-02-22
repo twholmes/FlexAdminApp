@@ -1,0 +1,376 @@
+<Readers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="CreateTargetTempInstallerEvidenceTables"
+			Order="100"
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('TempDB..#AVApplication') IS NOT NULL
+				DROP TABLE #AVApplication
+
+			CREATE TABLE #AVApplication
+			(
+				ApplicationID			INT,
+				DisplayName				NVARCHAR(256) COLLATE database_default,
+				Version					NVARCHAR(72) COLLATE database_default,
+				Publisher				NVARCHAR(100) COLLATE database_default,
+				PackageID				INT,
+				ExternalInstallerID		INT -- This is an ID that we will manufacture to be unique to each combination of DisplayName, Version  and Publisher
+			)
+
+			IF OBJECT_ID('TempDB..#InstallerEvidence') IS NOT NULL
+				DROP TABLE #InstallerEvidence
+
+			CREATE TABLE #InstallerEvidence
+			(
+				DisplayName			NVARCHAR(256) COLLATE database_default,
+				Version				NVARCHAR(72) COLLATE database_default,
+				Publisher			NVARCHAR(100) COLLATE database_default,
+				AccessModeID 		INT,
+				Evidence	 		NVARCHAR(64) COLLATE database_default
+			)
+			
+	
+			IF OBJECT_ID('TempDB..#RemoteUserToApplicationAccess') IS NOT NULL
+				DROP TABLE #RemoteUserToApplicationAccess
+
+			CREATE TABLE #RemoteUserToApplicationAccess
+			(
+				ExternalUserID	 			INT,
+				ExternalInstallerEvidenceID	INT,
+				AccessModeID				INT
+			)
+
+			CREATE UNIQUE CLUSTERED INDEX PK_#RemoteUserToApplicationAccess ON #RemoteUserToApplicationAccess(ExternalUserID, ExternalInstallerEvidenceID)
+						
+		]]>
+	</Reader>
+
+    <Reader 
+			xsi:type="SourceToTarget"
+			Name="GetApplications"
+			Order="110"
+			Retries="1"
+			Method="GetApplications"
+			Language="PowerShell"		
+			Table="#AVApplication">
+
+			<InputVariable Name="WebServicesURI" Variable="WebServicesURI"/>
+			<InputVariable Name="Username" Variable="Username"/>
+			<InputVariable Name="Password" Variable="Password"/>
+
+			<OutputSchema Name="ApplicationID" Type="int" Property="ApplicationID" />				
+			<OutputSchema Name="DisplayName" Type="nvarchar" Length="256" Property="DisplayName" />
+			<OutputSchema Name="Version" Type="nvarchar" Length="72" Property="Version" />
+			<OutputSchema Name="Publisher" Type="nvarchar" Length="200" Property="Publisher" />
+			<OutputSchema Name="PackageID" Type="int" Property="PackageID" />
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateIndexesOnAVApplication" 
+			Order="115" 
+			Retries="1">
+		<![CDATA[
+			CREATE INDEX IX_#AVApplication_PackageID ON #AVApplication(PackageID)
+			CREATE INDEX IX_#AVApplication_DisplayName_Version_Publisher ON #AVApplication(DisplayName, Version, Publisher)
+			CREATE INDEX IX_#AVApplication_ApplicationID ON #AVApplication(ApplicationID)
+		]]>
+	</Reader>	
+
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="GetInstallerEvidence"
+			Order="120"
+			Retries="1">
+		<![CDATA[
+		
+			INSERT INTO #InstallerEvidence (
+				DisplayName,
+				Version,
+				Publisher,
+				AccessModeID,
+				Evidence
+			)
+			SELECT DISTINCT
+				ava.DisplayName, 
+				ava.Version,
+				ava.Publisher,
+				1000 AS AccessModeID,  -- AccessMode.AppVolumes
+				'VMWare App Volumes' AS Evidence -- FNMS doesn't currently support custom evidence types so this will show up as 'Unknown' in FNMS
+			FROM #AVApplication AS ava
+				JOIN #AVPackage avp
+					ON avp.PackageID = ava.PackageID
+			WHERE avp.Status = 'enabled'
+			
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' installer evidence records in the source.'
+
+			CREATE INDEX IX_#InstallerEvidence_DisplayName_Version_Publisher ON #InstallerEvidence(DisplayName, Version, Publisher)
+			CREATE INDEX IX_#InstallerEvidence_AccessModeID ON #InstallerEvidence(AccessModeID)
+
+		]]>
+	</Reader>
+
+	<!--
+		Insert any new records into the ImportedInstallerEvidence table.
+		The App Volumes application ID is only unique to the package that it is in so it is not globally unique so, we have to manufacture the ExternalInstallerID.
+		We do this by getting the maximum ExternalInstallerID which currently exists in the ImportedInstallerEvidence table for the current connection.
+		Then, we add this MaxExternalInstallerID to the ROW_NUMBER() function to get distinct, consecutive ExternalInstallerIDs for the Installer Evidence 
+		which we are adding to the ImportedInstallerEvidence table
+	-->
+	<Reader xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			xsi:type="ExecuteOnTarget"
+			Name="InsertIntoImportedInstallerEvidence"
+			Order="130"
+			Retries="1">
+			<![CDATA[
+				DECLARE @MaxExternalInstallerID bigint
+				
+				SELECT @MaxExternalInstallerID = MAX(ExternalInstallerID)
+				FROM dbo.ImportedInstallerEvidence
+				WHERE ComplianceConnectionID = @ComplianceConnectionID
+				
+				IF @MaxExternalInstallerID IS NULL
+					SET @MaxExternalInstallerID = 0
+				
+				--Insert non existent installer evidence. 
+				INSERT INTO dbo.ImportedInstallerEvidence
+				(
+					ComplianceConnectionID,
+					ExternalInstallerID,
+					DisplayName,
+					Version,
+					Publisher,
+					Evidence,
+					ProductCode,
+					AccessModeID
+				)
+				SELECT
+					@ComplianceConnectionID,
+					@MaxExternalInstallerID + ROW_NUMBER() OVER (ORDER BY new.DisplayName, new.Version, new.Publisher),
+					new.DisplayName,
+					new.Version,
+					new.Publisher,
+					new.Evidence,
+					new.ProductCode,
+					new.AccessModeID
+				FROM (
+					SELECT
+						tie.DisplayName,
+						tie.Version,
+						tie.Publisher,
+						tie.Evidence,
+						NULL AS ProductCode,
+						tie.AccessModeID
+					FROM #InstallerEvidence AS tie
+					WHERE NOT EXISTS (
+						SELECT 1
+						FROM dbo.ImportedInstallerEvidence AS iie
+							WHERE iie.ComplianceConnectionID = @ComplianceConnectionID
+								AND iie.DisplayName = tie.DisplayName
+								AND iie.Version = tie.Version
+								AND iie.Publisher = tie.Publisher
+								AND iie.Evidence = tie.Evidence
+								AND iie.AccessModeID = tie.AccessModeID
+						)
+					) new				
+				PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' new Installer Evidence records into ImportedInstallerEvidence staging table that exist in source database'
+		]]>
+	</Reader>
+
+
+	<Reader xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			xsi:type="ExecuteOnTarget"
+			Name="RetrieveExternalInstallerIDs"
+			Order="140"
+			Retries="1">
+			<![CDATA[
+
+				UPDATE ava
+				SET ExternalInstallerID = iie.ExternalInstallerID
+				FROM #AVApplication ava
+					JOIN dbo.ImportedInstallerEvidence iie
+						ON iie.DisplayName = ava.DisplayName
+							AND iie.Version = ava.Version
+							AND iie.Publisher = ava.Publisher
+				
+				PRINT N'Updated ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' App Volumes Application record with their ExternalInstallerID'
+		]]>
+	</Reader>
+
+
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="GetUsertoApplicationAccessFromGroupAssignments"
+			Order="150"
+			Retries="1">
+		<![CDATA[
+			
+			INSERT INTO #RemoteUserToApplicationAccess(
+				ExternalUserID,
+				ExternalInstallerEvidenceID,
+				AccessModeID
+			)
+			SELECT DISTINCT
+				adu.ActiveDirectoryUserID,
+				ava.ExternalInstallerID,
+				1000 AS AccessModeID -- AccessMode.AppVolumes
+			FROM
+				dbo.ActiveDirectoryUser adu
+				JOIN dbo.ActiveDirectoryDomain ad
+					ON ad.ActiveDirectoryDomainID = adu.ActiveDirectoryDomainID
+				JOIN dbo.ActiveDirectoryChildObjects adco
+					ON adco.ChildObjectGUID = adu.GUID
+				JOIN #AVPackageAssignment avpa
+					ON avpa.ObjectSID = adco.RootGroupSID
+				JOIN #AVApplication ava
+					ON ava.PackageID = avpa.PackageID
+			WHERE EXISTS (
+				SELECT 1
+				FROM 
+					dbo.ComplianceUser cu
+					JOIN dbo.ComplianceDomain cd
+						ON cd.ComplianceDomainID = cu.ComplianceDomainID
+				WHERE
+					cu.SAMAccountName = adu.SAMAccountName
+					AND
+					cd.QualifiedName = ad.QualifiedName
+				)
+				
+
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' distinct AD user to App Volumes application assignments from group membershhips'
+			
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget"
+		Name="GetUsertoApplicationAccessFromUserAssignments"
+		Order="150"
+		Retries="1">
+		<![CDATA[
+			
+			INSERT INTO #RemoteUserToApplicationAccess(
+				ExternalUserID,
+				ExternalInstallerEvidenceID,
+				AccessModeID
+			)
+			SELECT DISTINCT
+				adu.ActiveDirectoryUserID,
+				ava.ExternalInstallerID,
+				1000 AS AccessModeID -- AccessMode.AppVolumes
+			FROM
+				dbo.ActiveDirectoryUser adu
+				JOIN dbo.ActiveDirectoryDomain ad
+					ON ad.ActiveDirectoryDomainID = adu.ActiveDirectoryDomainID
+				JOIN #AVPackageAssignment avpa
+					ON avpa.ObjectSID = adu.SID
+				JOIN #AVApplication ava
+					ON ava.PackageID = avpa.PackageID
+			WHERE EXISTS (
+				SELECT 1
+				FROM 
+					dbo.ComplianceUser cu
+					JOIN dbo.ComplianceDomain cd
+						ON cd.ComplianceDomainID = cu.ComplianceDomainID
+				WHERE
+					cu.SAMAccountName = adu.SAMAccountName
+					AND
+					cd.QualifiedName = ad.QualifiedName
+				)
+				AND NOT EXISTS (
+					SELECT 1
+					FROM #RemoteUserToApplicationAccess rutaa
+					WHERE 
+						rutaa.ExternalUserID = adu.ActiveDirectoryUserID
+						AND
+						rutaa.ExternalInstallerEvidenceID = ava.ExternalInstallerID
+						AND
+						rutaa.AccessModeID = 1000
+				)
+				
+
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' distinct AD user to App Volumes application assignments from direct user assignments'
+			
+		]]>
+	</Reader>
+
+
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="ImportRemoteUserToApplicationAccess"
+			Order="160"
+			Retries="1">
+		<![CDATA[
+			
+			-- Remove all the installer evidence for the connection
+			DELETE FROM dbo.ImportedRemoteUserToApplicationAccess
+			WHERE 
+				ComplianceConnectionID = @ComplianceConnectionID
+			
+			PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' remote user to application access records.'
+			
+			-- Add new remote user to application access data
+			INSERT INTO dbo.ImportedRemoteUserToApplicationAccess (
+				ComplianceConnectionID,
+				ExternalServerID,
+				ExternalInstallerEvidenceID,
+				ExternalUserID,
+				AccessModeID
+			)
+			SELECT 
+				@ComplianceConnectionID AS ComplianceConnectionID,
+				NULL AS ExternalServerID,
+				trutaa.ExternalInstallerEvidenceID,
+				trutaa.ExternalUserID,
+				trutaa.AccessModeID
+			FROM #RemoteUserToApplicationAccess trutaa
+			
+			PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' new remote user to application access records.'
+
+		]]>
+	</Reader>
+
+
+	<!-- Remove any records from the temp ImportedInstallerEvidence table that are no longer on the source -->
+	<Reader xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			xsi:type="ExecuteOnTarget"
+			Name="DeleteFromImportedInstallerEvidence"
+			Order="180"
+			Retries="1">
+			<![CDATA[
+				DELETE iie
+				FROM dbo.ImportedInstallerEvidence iie
+				WHERE
+					iie.ComplianceConnectionID = @ComplianceConnectionID
+					AND NOT EXISTS (
+						SELECT 1 
+						FROM dbo.ImportedRemoteUserToApplicationAccess irutaa 
+						WHERE irutaa.ComplianceConnectionID = iie.ComplianceConnectionID 
+						AND irutaa.ExternalInstallerEvidenceID = iie.ExternalInstallerID
+					)
+
+				PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' Installer Evidence records in ImportedInstallerEvidence staging table that are no longer present in the source'
+			]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="RemoveTargetTempInstallerEvidenceTables"
+			Order="190"
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('TempDB..#AVApplication') IS NOT NULL
+				DROP TABLE #AVApplication
+
+			IF OBJECT_ID('TempDB..#InstallerEvidence') IS NOT NULL
+				DROP TABLE #InstallerEvidence
+
+			IF OBJECT_ID('TempDB..#RemoteUserToApplicationAccess') IS NOT NULL
+				DROP TABLE #RemoteUserToApplicationAccess
+
+			IF OBJECT_ID('TempDB..#AVPackageAssignment') IS NOT NULL
+				DROP TABLE #AVPackageAssignment	
+
+			IF OBJECT_ID('TempDB..#AVPackage') IS NOT NULL
+				DROP TABLE #AVPackage	
+
+		]]>
+	</Reader>	
+</Readers>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="LicensePositions" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Custom view that extends FNMS standard License pOsition report</Description>
+    <FolderName></FolderName>
+    <FolderPath>Custom Views</FolderPath>
+    <CreationDate>12/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+			SELECT a.ShortDescription, a.SerialNumber
+			FROM Asset a
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

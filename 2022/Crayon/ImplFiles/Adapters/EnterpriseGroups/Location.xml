@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runistransaction="False" />
+  <Imports>
+	  <Import Name="Location" Type="CSV"  UsePhysicalTable="True" Tracefields="[Path]" Traceactions="created,deleted,updated,rejected"  TraceLifeTime="1 month" 
+			  ConnectionString="Provider=Microsoft.Jet.OLEDB.4.0;Data Source=.\Data;Extended Properties='text;HDR=Yes;FMT=CSVDelimited'" 
+			  AccountIsEncrypted="False"
+			  Query="
+				select 
+					[Path],
+					ComputerNameRule,
+					ComputerDomainRule,
+					Priority 
+				from 
+					[location.csv]" 
+			 >
+		  <Log Name="NewLog" Output="file" Loglevel="debug" filename="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" ></Log>
+
+		  <Object Name="Location" Type="location" Output="locationoutid"  Update="false" Create="true">
+			  <Property Name="Name" Type="groupcn"  Update="Never" Value="Path" ValueType="FieldValue" UseForMatching="True" RegExSplit="/"/>
+			  <Property Name="ID" Type="groupexid" usenullvalueformatching="RemoveProperty" Update="Never" Value="locationoutid" ValueType="Field Value" UseForMatching="true" MatchingMask="[value]%." MatchingMode="like"/>
+		  </Object>
+
+		  <Object
+			  Name="Update Compliance Computer records with Location IDs"
+			  Type="Custom"
+			  timeout="20000"
+			  Query="
+					WITH MatchingRules as (
+						SELECT
+							cc.ComplianceComputerID,
+							cc.ComputerName,
+							Dom.QualifiedName,
+							eci.ComputerNameRule,
+							eci.ComputerDomainRule,
+							eci.[Path],
+							eci.locationoutid as GroupExID,
+							eci.Priority
+						FROM
+							ManageSoft.dbo.ComplianceComputer cc
+							LEFT OUTER JOIN ManageSoft.dbo.ComplianceDomain dom on cc.ComplianceDomainID = dom.ComplianceDomainID
+							INNER JOIN ManageSoft.dbo.ECMImport_Location eci on (
+								cc.ComputerName like eci.ComputerNameRule 
+								and 
+								(
+									(dom.QualifiedName IS NULL and eci.ComputerDomainRule is NULL)
+									OR dom.QualifiedName like eci.ComputerDomainRule
+								)
+							)
+						WHERE
+							cc.LocationID is NULL
+					)
+
+						UPDATE CC SET CC.LocationID = QualifiedList.GroupExID
+						FROM (
+							ManageSoft.dbo.ComplianceComputer cc
+							INNER JOIN (
+								SELECT
+									TOP 1 WITH TIES 
+										mr.ComplianceComputerID, mr.GroupExID
+								FROM
+									MatchingRules mr
+								ORDER BY
+									-- Here we choose the best matching rule based on priority, length of string rule match, and lexcial ordering
+									-- refer to the spec for full requirements related to choosing the best match.
+									ROW_NUMBER() OVER
+									(
+										PARTITION BY
+											mr.ComplianceComputerID
+										ORDER BY
+											mr.Priority ASC,
+											LEN(mr.ComputerNameRule) DESC,
+											LEN(mr.ComputerDomainRule) DESC,
+											UPPER(mr.[Path]) ASC
+									)
+							) as QualifiedList on cc.ComplianceComputerID = QualifiedList.ComplianceComputerID
+						)
+				">
+			</Object>
+		</Import>
+	</Imports>
+</root>

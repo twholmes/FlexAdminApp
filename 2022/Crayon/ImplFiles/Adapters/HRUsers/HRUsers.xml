@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runistransaction="False" />
+  <Imports>
+    <Import Type="SqlServer" Name="HRUsers"
+      Description="Import of user data Copyright (C) 2012 Flexera Software LLC"
+      ConnectionString="Data Source=ITS-DS-SQLAG02.compute.dc.uq.edu.au;MultiSubnetFailover=true;Integrated Security=SSPI"
+      Query="
+        SELECT 
+          *, 
+          SUBSTRING(OPAL_UNIT_CODE, 1, 2) AS FACULTY_CODE, 
+          SUBSTRING(OPAL_UNIT_CODE, 3, 3) AS SCHOOL_CODE, 
+          SUBSTRING(OPAL_UNIT_CODE, 6, 2) AS SECTION_CODE, 
+          CAST(NULL AS NVARCHAR(500)) AS CORPORATE_UNIT_ID
+        FROM ITSXFRP_FNMP..TO_FLEXERA.STAFF_ACTIVE
+        -- Query from Excel:
+        -- SELECT *, MID(OPAL_UNIT_CODE, 1, 2) AS FACULTY_CODE, MID(OPAL_UNIT_CODE, 3, 3) AS SCHOOL_CODE, MID(OPAL_UNIT_CODE, 6, 2) AS SECTION_CODE, '' AS CORPORATE_UNIT_ID
+        -- FROM [Sheet1$]
+      "
+      TraceActions="created,deleted,updated,rejected" 
+      UsePhysicalTable="True"
+      >
+      
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" />
+      
+      <Object Type="Location" Name="Location" Comments="Lookup and create user location by name." Update="False" Create="True" OutputField="Location_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="LOCATION_NAME" UseForMatching="True" Length="64" />
+      </Object>
+      
+      <Object Type="Custom" Name="LookupCorporateUnit"
+        Comments="Lookup corporate unit based on matching faculty code, school code and section code to levels 2, 3 and 4 of the corporate unit hierarchy. If all 3 levels do not match, match as many levels as possible.
+          For example: if faculty, school and section codes are &quot;10&quot;, &quot;083&quot; and &quot;01&quot; respectively, this will match to something like &quot;UQ\10 - Science\083 - Dentistry\01 - A section&quot; in the corporate unit hierarchy. If there was no section &quot;01&quot; in the hierarchy, it would match to just &quot;UQ\10 - Science\083 - Dentistry&quot; (assuming school &quot;083&quot; exists)."
+        TimeOut="-1"
+        Query="
+          UPDATE u
+            SET CORPORATE_UNIT_ID = COALESCE(gex4.GroupExID, gex3.GroupExID, gex2.GroupExID, gex1.GroupExID)
+          FROM ECMImport_HRUsers  u
+          JOIN GroupEx gex1
+            ON gex1.GroupCN = 'UQ' AND gex1.GroupTypeID = 2 AND dbo.CountChar(gex1.GroupExID, '.') = 2
+          LEFT OUTER JOIN GroupEx gex2
+            ON gex2.GroupCN LIKE u.FACULTY_CODE + '%' AND gex2.GroupTypeID = 2 AND gex2.GroupExID LIKE gex1.GroupExID + '%.' AND dbo.CountChar(gex2.GroupExID, '.') = 3
+          LEFT OUTER JOIN GroupEx gex3
+            ON gex3.GroupCN LIKE u.SCHOOL_CODE + '%' AND gex3.GroupTypeID = 2 AND gex3.GroupExID LIKE gex2.GroupExID + '%.' AND dbo.CountChar(gex3.GroupExID, '.') = 4
+          LEFT OUTER JOIN GroupEx gex4
+            ON gex4.GroupCN LIKE u.SECTION_CODE + '%' AND gex4.GroupTypeID = 2 AND gex4.GroupExID LIKE gex3.GroupExID + '%.' AND dbo.CountChar(gex4.GroupExID, '.') = 5
+      "/>
+
+      <Object Type="ComplianceDomain" Name="Domain" Comments="Lookup/create &quot;UQ&quot; domain which all user records will be under" Update="False" Create="True" OutputField="Domain_ID">
+        <Property Type="flatname" Name="Flat Name" ValueType="Fixed Value" Value="UQ" UseForMatching="True" Regex="(?&lt;=DC=.*DC=).*?(?=,DC=)" />
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Fixed Value" Value="uq" Regex="(?&lt;=DC=).*" RegexReplace=",DC=" RegexReplaceBy="." />
+      </Object>
+      
+      <Object Type="User" Name="User" Comments="Create &amp; update user records" Update="True" Create="True" OutputField="User_ID">
+        <Property Type="samaccountname" Name="SAMAccountName" ValueType="Field Value" Value="SAM_ACCOUNT_NAME" UseForMatching="True" Length="64" />
+        <Property Type="compliancedomainid" Name="Compliance Domain ID" ValueType="Field Value" Value="Domain_ID" UseForMatching="True" DataType="Integer" />
+        <Property Type="firstname" Name="First Name" ValueType="Field Value" Value="FIRST_NAME" Length="128" />
+        <Property Type="lastname" Name="Last Name" ValueType="Field Value" Value="LAST_NAME" Length="128" />
+        <Property Type="username" Name="Full User Name" ValueType="Field Value" Value="FULL_NAME" Length="512" />
+        <Property Type="userstatus" Name="User Status" ValueType="Field Value" Value="STATUS" Length="1000" />
+        <Property Type="jobtitle" Name="Job Title" ValueType="Field Value" Value="JOB_TITLE" Length="128" />
+        <Property Type="businessphonenumber" Name="Business Phone Number" ValueType="Field Value" Value="BUSINESS_PHONE" Length="30" />
+        <Property Type="email" Name="Email" ValueType="Field Value" Value="EMAIL" Length="200" />
+        <Property Type="employmentstatus" Name="Employment Status" ValueType="Field Value" Value="STAFF_TYPE_NAME" Length="1000" />
+        <Property Type="locationid" Name="Location ID" ValueType="Field Value" Value="Location_ID" Length="128" />
+        <Property Type="businessunitid" Name="Corporate Unit ID" ValueType="Field Value" Value="CORPORATE_UNIT_ID" Length="128" />
+        <Property Type="CustomUserTitle" Name="CustomUserTitle" ValueType="Field Value" Value="USER_TITLE" Length="512" IsCustomField="True" />
+      </Object>
+    </Import>
+
+    <Import Type="SqlServer" Name="HRUsersTerminationDetails"
+      Description="Import of user termination data  Copyright (C) 2012 Flexera Software LLC"
+      ConnectionString="Data Source=ITS-DS-SQLAG02.compute.dc.uq.edu.au;MultiSubnetFailover=true;Integrated Security=SSPI"
+      Query="
+        SELECT *, 
+          CAST(DATEPART(yyyy,LAST_DATE_TERMINATED) AS VARCHAR(4)) + '-' + CAST(DATEPART(mm,LAST_DATE_TERMINATED) AS VARCHAR(2)) + '-' + CAST(DATEPART(d,LAST_DATE_TERMINATED) AS VARCHAR(2)) AS TERMINATION_DATE_STRING
+        FROM ITSXFRP_FNMP..TO_FLEXERA.STAFF_TERM
+        -- Query from Excel:
+        -- SELECT *, CSTR(YEAR(CDATE(LAST_DATE_TERMINATED))) + '-' + CSTR(MONTH(CDATE(LAST_DATE_TERMINATED))) + '-' + CSTR(DAY(CDATE(LAST_DATE_TERMINATED))) AS TERMINATION_DATE_STRING
+        -- FROM [Sheet1$]
+      "
+      TraceActions="created,deleted,updated,rejected" 
+      UsePhysicalTable="True"
+      >
+      
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" />
+      
+      <Object Type="User" Name="User" Comments="Update user records for terminated users" Update="True" Create="False" OutputField="User_ID">
+        <Property Type="samaccountname" Name="SAMAccountName" ValueType="Field Value" Value="SAM_ACCOUNT_NAME" UseForMatching="True" Length="64" />
+        <Property Type="userstatus" Name="User Status" ValueType="Fixed Value" Value="Terminated" Length="1000" />
+        <Property Type="customuserterminationdate" Name="CustomUserTerminationDate" ValueType="Field Value" Value="LAST_DATE_TERMINATED" Length="512" IsCustomField="True" />
+      </Object>
+    </Import>
+    
+  </Imports>
+</root>

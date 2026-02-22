@@ -1,0 +1,578 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+	<Report
+		ID=""
+		SearchName="CIS Standard Restrictions"
+		ComplianceSearchTypeID="-1"
+		ComplianceSearchFolderID=""
+		CreatedByOperatorID=""
+		RestrictedAccessTypeID="1"
+		CanDelete="Yes"
+	>
+		<Description>This report lists commercial product installs of Microsoft Windows Server software. A flag is set where product installs are already covered by a Windows Server license</Description>
+		<FolderName>Crayon/Onboarding/Restrictions</FolderName>
+		<CreationDate>07/07/2020</CreationDate>
+		<SearchSQL>
+			<![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Set maximum imputed consumption on the CisDC license
+DECLARE @MaxImputedConsumption [int]
+SET @MaxImputedConsumption = 8000
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+  INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+  SET @RowLimit = 0x7FFFFFFF;
+END;
+
+-- Pre-calculate host to vm relationships
+CREATE TABLE #VirtualHosts 
+(
+  [ComplianceComputerID] [int] PRIMARY KEY,
+  [HostOS] [nvarchar](128) NULL,  
+  [HostCores] [int],
+  [VmCount] [int]
+)
+INSERT INTO #VirtualHosts 
+SELECT
+  vh.[ComplianceComputerID]
+  ,vh.[OperatingSystem] as [HostOS]
+  ,vh.[NumberOfCores] as [HostCores]
+  ,vmx.[VmCount]
+FROM [dbo].[ComplianceComputerInfo] as vh 
+JOIN
+(
+  SELECT vm.[HostComplianceComputerID], COUNT(vm.[ComplianceComputerID]) as [VmCount]
+  FROM [dbo].[VirtualMachine] as vm
+  GROUP BY vm.[HostComplianceComputerID]
+) as vmx on vmx.[HostComplianceComputerID] = vh.[ComplianceComputerID]    
+
+-- Pre-calculate computer and host into
+CREATE TABLE #WindowsComputerAndHostInfo 
+(
+  [ComplianceComputerID] [int] PRIMARY KEY,
+  [ComputerName] nvarchar(256),  
+  [DomainName] nvarchar(100),  
+  [ComputerTypeID] [int],  
+  [ComputerType] nvarchar(1000),
+  [ComputerRole] nvarchar(1000),
+  [ComputerStatus] nvarchar(1000),   
+  [OperatingSystem] nvarchar(128),
+  [HostComplianceComputerID] [int],      
+  [HostComputerName] nvarchar(256),
+  [HostOS] nvarchar(128),
+  [HostCores] [int],
+  [LicensableCores] [int],
+  [VmCount] [int],
+  [VmNumber] [int],  
+  [Location] nvarchar(500),
+  [GroupExID] nvarchar(128),
+  [InventoryDate] datetime,
+  [InventoryAge] [int],
+  [IsServer] [bit]
+);
+
+WITH WindowsComputerInfo AS
+(
+  SELECT
+    cci.[ComplianceComputerID]
+    ,cci.[ComputerName]
+    ,cci.[DomainName]	
+    ,cci.[ComplianceComputerTypeID] as [ComputerTypeID]
+    ,cct.[DefaultValue] as [ComputerType]       
+    --,cc.ComplianceComputerRoleID
+    ,ccr.DefaultValue as [ComputerRole]
+    ,REPLACE(REPLACE(ccs.DefaultValue,'[',''),']','') as [ComputerStatus]       
+    ,cci.[OperatingSystem]
+    ,cci.[NumberOfCores]
+    ,cci.[HostComplianceComputerID]       
+    ,cci.[HostComputerName] as [HostComputerName]
+    --,cc.LocationID
+    ,ISNULL(loc.[Path],'') AS [Location]
+    ,loc.[GroupExID]
+    ,cci.InventoryDate
+    ,DATEDIFF(day, cci.InventoryDate, GetDate()) AS [InventoryAge] 
+    ,case
+       when cci.[OperatingSystem] like '%Server%' then convert(bit,1)
+       else convert(bit,0)
+     end AS [IsServer]        
+  FROM [dbo].[ComplianceComputerInfo] AS cci
+  JOIN [dbo].[ComplianceComputerType] as cct on cct.[ComplianceComputerTypeID] = cci.[ComplianceComputerTypeID]
+  JOIN [dbo].[ComplianceComputerRole] as ccr on ccr.ComplianceComputerRoleID = cci.ComplianceComputerRoleID
+  JOIN [dbo].[ComplianceComputerStatus] as ccs on ccs.ComplianceComputerStatusID = cci.ComplianceComputerStatusID         
+  LEFT OUTER JOIN [dbo].[Location] as loc on loc.GroupExID = cci.LocationID
+),
+WindowsComputerAndHostInfo AS
+(
+  SELECT
+    cci.[ComplianceComputerID]
+    ,cci.[ComputerName]
+    ,cci.[DomainName]		
+    ,cci.[ComputerTypeID]
+    ,cci.[ComputerType]       
+    ,cci.[ComputerRole]
+    ,cci.[ComputerStatus]       
+    ,cci.[OperatingSystem]
+    ,cci.[HostComplianceComputerID]       
+    ,ISNULL(cci.[HostComputerName], '') as [HostComputerName]
+    ,ISNULL(vh.[HostOS],'') as [HostOS]         
+    ,ISNULL(vh.[HostCores],0) as [HostCores]       
+    ,ISNULL(vh.[VmCount],0) AS [VmCount]
+    ,cci.[Location]
+    ,cci.[GroupExID]
+    ,cci.InventoryDate
+    ,cci.[InventoryAge]   
+    ,cci.[IsServer]       
+  FROM WindowsComputerInfo as cci
+  LEFT OUTER JOIN #VirtualHosts as vh on vh.[ComplianceComputerID] = cci.[HostComplianceComputerID]
+  WHERE cci.[ComputerTypeID] = 3 and cci.[OperatingSystem] like '%windows%'
+
+  UNION
+
+  SELECT
+    cci.[ComplianceComputerID]
+    ,cci.[ComputerName]
+    ,cci.[DomainName]		
+    ,cci.[ComputerTypeID]
+    ,cci.[ComputerType]       
+    ,cci.[ComputerRole]
+    ,cci.[ComputerStatus]       
+    ,cci.[OperatingSystem]
+    ,cci.[ComplianceComputerID]       
+    ,cci.[ComputerName] as [HostComputerName]
+    ,cci.[OperatingSystem] as [HostOS]        
+    ,ISNULL(cci.[NumberOfCores],0) as [HostCores]       
+    ,ISNULL(vh.[VmCount],0) AS [VmCount]
+    ,cci.[Location]
+    ,cci.[GroupExID]
+    ,cci.InventoryDate
+    ,cci.[InventoryAge]
+    ,cci.[IsServer]         
+  FROM WindowsComputerInfo as cci
+  LEFT OUTER JOIN #VirtualHosts as vh on vh.[ComplianceComputerID] = cci.[ComplianceComputerID]
+  WHERE cci.[ComputerTypeID] = 2
+
+  UNION
+
+  SELECT
+    cci.[ComplianceComputerID]
+    ,cci.[ComputerName]
+    ,cci.[DomainName]		
+    ,cci.[ComputerTypeID]
+    ,cci.[ComputerType]       
+    ,cci.[ComputerRole]
+    ,cci.[ComputerStatus]       
+    ,cci.[OperatingSystem]
+    ,cci.[ComplianceComputerID]       
+    ,cci.[ComputerName] as [HostComputerName]
+    ,cci.[OperatingSystem] as [HostOS]        
+    ,ISNULL(cci.[NumberOfCores],0) as [HostCores]       
+    ,0 AS [VmCount]
+    ,cci.[Location]
+    ,cci.[GroupExID]
+    ,cci.InventoryDate
+    ,cci.[InventoryAge]  
+    ,cci.[IsServer]         
+  FROM WindowsComputerInfo as cci
+  WHERE cci.[ComputerTypeID] = 1 and cci.[OperatingSystem] like '%windows%' 
+)
+
+INSERT INTO #WindowsComputerAndHostInfo 
+SELECT
+  wc.[ComplianceComputerID]
+  ,wc.[ComputerName]  
+  ,wc.[DomainName]	  
+  ,wc.[ComputerTypeID]       
+  ,wc.[ComputerType]
+  ,wc.[ComputerRole]
+  ,wc.[ComputerStatus]       
+  ,wc.[OperatingSystem]
+  ,wc.[HostComplianceComputerID]       
+  ,wc.[HostComputerName]
+  ,wc.[HostOS]
+  ,wc.[HostCores]
+  ,case  
+     when wc.[HostCores] < 16 then 16
+     else wc.[HostCores]
+   end [LicensableCores]   
+  ,wc.[VmCount]
+  ,case 
+     when wc.[ComputerTypeID] = 3 and wc.[HostComplianceComputerID] != 0 then ROW_NUMBER() OVER(PARTITION BY wc.[HostComplianceComputerID] ORDER BY wc.[InventoryAge])
+     else 0
+   end as [VmNumber]        
+  ,wc.[Location]
+  ,wc.[GroupExID]
+  ,wc.[InventoryDate]
+  ,wc.[InventoryAge]  
+  ,wc.[IsServer]      
+FROM WindowsComputerAndHostInfo as wc
+
+-- Pre-calculate windows install info
+CREATE TABLE #WindowsInstalls 
+(
+  [InstalledSoftwareID] [int] PRIMARY KEY,
+  [ComplianceComputerID] [int],
+  [ComputerName] nvarchar(256),  
+  [DomainName] nvarchar(100),
+  [ComputerTypeID] [int],  
+  [ComputerType] nvarchar(1000),
+  [ComputerRole] nvarchar(1000),
+  [ComputerStatus] nvarchar(1000),   
+  [OperatingSystem] nvarchar(128),
+  [HostComplianceComputerID] [int],      
+  [HostComputerName] nvarchar(256),
+  [HostOS] nvarchar(128),
+  [HostCores] [int],
+  [LicensableCores] [int],  
+  [VmCount] [int],
+  [VmNumber] [int],  
+  [Location] nvarchar(500),
+  [GroupExID] nvarchar(128),
+  [InventoryAge] [int],
+  [SoftwareTitleName] nvarchar(512),
+  [SoftwareTitleVersion] nvarchar(50),
+  [EditionName] nvarchar(50),
+  [EditionWeight] [int],
+  [ProductName] nvarchar(200),
+  [SoftwareTitleAction] nvarchar(1000),
+  [LicenseName] nvarchar(256),
+  [IsServer] [bit],
+  [RelatedInstalls] [int]
+);
+
+INSERT INTO #WindowsInstalls
+SELECT
+  isw.[InstalledSoftwareID]
+  ,wc.[ComplianceComputerID]
+  ,wc.[ComputerName]
+  ,wc.[DomainName]
+  ,wc.[ComputerTypeID]    
+  ,wc.[ComputerType]
+  ,wc.[ComputerRole]
+  ,wc.[ComputerStatus]         
+  ,wc.[OperatingSystem]
+  ,wc.[HostComplianceComputerID]        
+  ,wc.[HostComputerName]
+  ,wc.[HostOS]
+  ,wc.[HostCores]
+  ,wc.[LicensableCores]
+  ,wc.[VmCount]
+  ,wc.[VmNumber]   
+  ,wc.[Location]
+  ,wc.[GroupExID]
+  ,wc.[InventoryAge]        
+  --,isw.[SoftwareTitleID]
+  ,isw.[SoftwareTitleName]
+  ,isw.[SoftwareTitleVersion]
+  ,sti.EditionName
+  ,case
+     when sti.EditionName like 'datacenter' then 3
+     when sti.EditionName like 'enterprise' then 2
+     when sti.EditionName like 'standard' then 1       
+    else 0
+   end [EditionWeight]      
+  ,sti.ProductName
+  --,sti.Publisher
+  ,REPLACE(REPLACE(sta.ActionDefaultValue,'[',''),']','') as [SoftwareTitleAction]         
+  --,isw.[IsUsed]
+  --,isw.[SoftwareLicenseID]
+  ,ISNULL(isw.[LicenseName],'') AS [LicenseName]
+  --,isw.[InstanceName]
+  --,isw.[IsLicensable]
+  --,isw.[SoftwareLicenseAllocationID]
+  --,ISNULL(isw.[AssignedUser],'') AS [AssignedUser]
+  --,ISNULL(isw.[CalculatedUser],'') AS [CalculatedUser]
+  --,isw.[DiscoveryDate]
+  --,isw.[LastUsedDate]
+  ,wc.[IsServer]      
+  ,ROW_NUMBER() OVER(PARTITION BY isw.[ComplianceComputerID] ORDER BY sti.ProductName, isw.[SoftwareTitleName]) AS [RelatedInstalls]   
+FROM [dbo].[InstalledSoftwareInfoUnScoped] as isw
+JOIN #WindowsComputerAndHostInfo wc ON wc.ComplianceComputerID = isw.ComplianceComputerID    
+JOIN [dbo].[SoftwareTitleInfo] AS sti ON sti.SoftwareTitleID = isw.SoftwareTitleID
+JOIN [dbo].[SoftwareTitleAction] AS sta on sta.SoftwareTitleActionID = sti.SoftwareTitleActionID       
+WHERE
+  sti.Publisher like 'Microsoft'
+  and 
+  (sti.ProductName like 'Windows Server' OR sti.ProductName like '%Core Infra%');
+  --and
+  --sti.SoftwareTitleClassificationID = 3
+
+-- Pre-calculate host installs rollups
+CREATE TABLE #HostInstallsRollup
+(
+  [HostComplianceComputerID] [int] PRIMARY KEY, 
+  [MaxEditionWeight] [int],
+  [HostPriority][int]
+)
+
+INSERT INTO #HostInstallsRollup
+SELECT
+  wi.[HostComplianceComputerID]
+  ,MAX(wi.[EditionWeight]) as [MaxEditionWeight]
+  ,0 as [HostPriority]
+FROM #WindowsInstalls as wi
+WHERE wi.[HostComplianceComputerID] is not null
+GROUP BY wi.[HostComplianceComputerID]
+
+-- initialise host priority at the host rollup level
+UPDATE hir
+SET hir.[HostPriority] = hirx.[HostPriority] 
+FROM #HostInstallsRollup as hir
+JOIN
+(
+  SELECT
+    hi.[HostComplianceComputerID],
+    ROW_NUMBER() OVER(ORDER BY wc.[VmCount] desc, wc.[LicensableCores] desc, hi.[MaxEditionWeight] desc) [HostPriority]
+  FROM #HostInstallsRollup as hi
+  JOIN #WindowsComputerAndHostInfo as wc on wc.ComplianceComputerID = hi.HostComplianceComputerID
+  WHERE wc.[ComputerTypeID] < 3
+) as hirx on hirx.HostComplianceComputerID = hir.HostComplianceComputerID
+
+-- Pre-calculate windows install extra info
+CREATE TABLE #WindowsInstallsEx 
+(
+  [InstalledSoftwareID] [int] PRIMARY KEY,      
+  [ComplianceComputerID] [int],
+  [ComputerName] nvarchar(256),  
+  [DomainName] nvarchar(100),
+  [ComputerTypeID] [int],  
+  [ComputerType] nvarchar(1000),
+  [ComputerRole] nvarchar(1000),
+  [ComputerStatus] nvarchar(1000),   
+  [OperatingSystem] nvarchar(128),
+  [HostComplianceComputerID] [int],      
+  [HostComputerName] nvarchar(256),
+  [HostOS] nvarchar(128),
+  [HostCores] [int],
+  [LicensableCores] [int],  
+  [VmCount] [int],
+  [VmNumber] [int],  
+  [Location] nvarchar(500),
+  [GroupExID] nvarchar(128),
+  [InventoryAge] [int],
+  [SoftwareTitleName] nvarchar(512),
+  [SoftwareTitleVersion] nvarchar(50),
+  [EditionName] nvarchar(50),
+  [EditionWeight] [int],
+  [MaxEditionWeight] [int],   
+  [ProductName] nvarchar(200),
+  [SoftwareTitleAction] nvarchar(1000),
+  [LicenseName] nvarchar(256),
+  [IsServer] [bit],
+  [RelatedInstalls] [int],
+  [HostPriority] [int],
+  [RunningConsumption] [int],
+  [IsCisDC] [bit],
+  [IsCisStd] [bit],
+  [IsWinDC] [bit],
+  [IsWinStd] [bit]      
+);
+
+INSERT INTO #WindowsInstallsEx
+SELECT
+  wi.[InstalledSoftwareID]
+  ,wi.[ComplianceComputerID]
+  ,wi.[ComputerName]
+  ,wi.[DomainName]
+  ,wi.[ComputerTypeID]    
+  ,wi.[ComputerType]
+  ,wi.[ComputerRole]
+  ,wi.[ComputerStatus]         
+  ,wi.[OperatingSystem]
+  ,wi.[HostComplianceComputerID]        
+  ,wi.[HostComputerName]
+  ,wi.[HostOS]
+  ,wi.[HostCores]
+  ,wi.[LicensableCores]
+  ,wi.[VmCount]
+  ,wi.[VmNumber]   
+  ,wi.[Location]
+  ,wi.[GroupExID]
+  ,wi.[InventoryAge]    
+  ,wi.[SoftwareTitleName]
+  ,wi.[SoftwareTitleVersion]
+  ,wi.[EditionName]
+  ,wi.[EditionWeight]
+  ,hir.[MaxEditionWeight]      
+  ,wi.[ProductName]
+  ,wi.[SoftwareTitleAction]         
+  ,wi.[LicenseName]
+  ,wi.[IsServer]
+  ,wi.[RelatedInstalls] 
+  ,0 as [HostPriority]
+  ,0 as [RunningConsumption]  
+  ,case 
+     when wi.[ComputerTypeID] = 1 and wi.[OperatingSystem] like '%Datacenter%' then CONVERT(bit,1)
+     when wi.[ComputerTypeID] = 3 and wi.[HostComplianceComputerID] > 0 and (wi.[VmCount] > 2 or hir.[MaxEditionWeight] > 2) then CONVERT(bit,1)	 
+     when wi.[ComputerTypeID] = 2 and hir.[MaxEditionWeight] > 2 then CONVERT(bit,1)
+     else CONVERT(bit,0)
+   end as [IsCisDC]
+  ,case 
+     when wi.[ComputerTypeID] = 1 and wi.[OperatingSystem] not like '%Datacenter%' and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)
+     when wi.[ComputerTypeID] = 3 and wi.[HostComplianceComputerID] > 0 and wi.[VmCount] <= 2 and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)	 
+     when wi.[ComputerTypeID] = 2 and wi.[VmCount] <= 2 and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)
+     else CONVERT(bit,0)
+   end as [IsCisStd]     
+  ,case 
+     when wi.[ComputerTypeID] = 1 and wi.[OperatingSystem] like '%Datacenter%' then CONVERT(bit,1)
+     when wi.[ComputerTypeID] = 3 and wi.[HostComplianceComputerID] > 0 and (wi.[VmCount] > 2 or hir.[MaxEditionWeight] > 2) then CONVERT(bit,1)	 
+     when wi.[ComputerTypeID] = 2 and hir.[MaxEditionWeight] > 2 then CONVERT(bit,1)
+     else CONVERT(bit,0)
+   end as [IsWinDC]
+  ,case 
+     when wi.[ComputerTypeID] = 1 and wi.[OperatingSystem] not like '%Datacenter%' and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)
+     when wi.[ComputerTypeID] = 3 and wi.[HostComplianceComputerID] > 0 and wi.[VmCount] <= 2 and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)	 
+     when wi.[ComputerTypeID] = 2 and wi.[VmCount] <= 2 and hir.[MaxEditionWeight] < 3 then CONVERT(bit,1)
+     else CONVERT(bit,0)
+   end as [IsWinStd]      
+FROM #WindowsInstalls as wi
+LEFT OUTER JOIN #HostInstallsRollup as hir on hir.[HostComplianceComputerID] = wi.[HostComplianceComputerID];
+
+-- update host priority at the installs level
+UPDATE wi
+SET wi.[HostPriority] = hirx.[HostPriority] 
+FROM #WindowsInstalls as wi
+JOIN
+(
+  SELECT
+    hir.[HostComplianceComputerID],
+    ROW_NUMBER() OVER(ORDER BY wi.[VmCount] desc, wi.[LicensableCores] desc, hir.[MaxEditionWeight] desc) [HostPriority]
+  FROM #HostInstallsRollup as hir
+  JOIN #WindowsInstalls as wi on wi.ComplianceComputerID = hir.HostComplianceComputerID
+  WHERE wi.[ComputerTypeID] < 3 and wi.[IsCisDC] = 1
+) as hirx on hirx.HostComplianceComputerID = wi.HostComplianceComputerID;
+
+-- Pre-calculate imputed license consumption
+WITH LicenseConsumption AS
+(
+  SELECT
+    hir.[HostComplianceComputerID]
+    ,hir.[MaxEditionWeight]
+    ,hir.[HostPriority]
+    ,wc.[LicensableCores]
+    ,SUM(wc.[LicensableCores]/2) OVER(ORDER BY hir.[HostPriority]) AS [RunningConsumption]
+  FROM #HostInstallsRollup as hir
+  JOIN #WindowsComputerAndHostInfo wc ON wc.ComplianceComputerID = hir.HostComplianceComputerID   
+)
+UPDATE wi
+SET wi.[RunningConsumption] = lc.[RunningConsumption] 
+FROM #WindowsInstallsEx as wi
+JOIN LicenseConsumption as lc on lc.[HostComplianceComputerID] = wi.[HostComplianceComputerID];
+
+-- Cap license consumption
+--UPDATE wi
+--SET wi.[IsCisDC] = CONVERT(bit,0) 
+--FROM #WindowsInstallsEx as wi
+--WHERE wi.[RunningConsumption] > @MaxImputedConsumption
+
+--UPDATE wi
+--SET wi.[RunningConsumption] = 0 
+--FROM #WindowsInstallsEx as wi
+--WHERE wi.[IsCisDC] = 0;
+
+-- Results query
+WITH CountryLocations AS
+(
+  SELECT
+    lx.[GroupExID]
+	,lx.[LocationLevel1]
+	,case
+	   when lx.[LocationLevel1] in 
+       (
+         'American Samoa','ARE','ASM','AUS','Australia','Cambodia','COK','Cook Islands','DEU','Fiji','FJI','FRA','France',
+         'GBR','Germany','Guam','GUM','HKG','Hong Kong','Japan','JPN','KHM','KIR','Kiribati','KOR','Korea, Republic of','LAO','Lao People''s Democratic Rep',
+         'Malaysia','MMR','Myanmar','MYS','New Zealand','NZL','Papua New Guinea','PNG','Samoa','SGP','Singapore','SLB','Solomon Islands','Taiwan, Province of China',
+         'THA','Thailand','TMP','TON','Tonga','TWN','United States','USA','Vanuatu','Viet Nam','VNM','VUT','WSM'
+       ) then CONVERT(bit,1)
+	   else CONVERT(bit,0)
+     end as [IsSGP]			
+  FROM
+  (
+    SELECT
+      loc.[GroupExID]
+      ,loc.[Path]
+      ,case
+         when loc.[Path] is not null and PATINDEX('%/%',loc.[Path]) = 0 then loc.[Path]       
+         when loc.[Path] is not null then LEFT(loc.[Path],PATINDEX('%/%',loc.[Path])-1) 
+         else ''
+       end as [LocationLevel1]
+    FROM [dbo].[Location] as loc
+  ) as lx
+),
+RestrictionResults as
+(
+  SELECT
+    wi.[InstalledSoftwareID]
+    ,wi.[ComplianceComputerID] as [ComputerID]
+    ,wi.[ComputerName]
+    ,wi.[DomainName]
+    ,wi.[ComputerTypeID]    
+    ,wi.[ComputerType]
+    ,wi.[ComputerRole]
+    ,wi.[ComputerStatus]         
+    ,wi.[OperatingSystem]
+    ,wi.[HostComplianceComputerID]    
+    ,wi.[HostComputerName]
+    ,wi.[HostOS]      
+    ,wi.[VmCount]
+    ,wi.[VmNumber]        
+    ,wi.[HostCores]
+    ,wi.[LicensableCores]
+    ,wi.[GroupExID]
+    --,wi.[Location]
+    ,cl.[LocationLevel1]  
+    ,wi.[InventoryAge]    
+    ,wi.[SoftwareTitleName]
+    ,wi.[SoftwareTitleVersion]
+    ,wi.[EditionName]
+    ,wi.[EditionWeight]
+    ,wi.[MaxEditionWeight]
+    ,wi.[ProductName]
+    ,wi.[SoftwareTitleAction]
+    ,wi.[LicenseName]       
+    ,wi.[IsServer]
+    ,wi.[RelatedInstalls] 
+    ,wi.[HostPriority]
+    ,wi.[RunningConsumption]
+    ,wi.[IsCisDC]
+    ,wi.[IsCisStd]  
+    ,wi.[IsWinDC] 
+    ,wi.[IsWinStd] 
+  FROM #WindowsInstallsEx as wi
+  JOIN CountryLocations as cl on cl.GroupExID = wi.[GroupExID]
+  --WHERE 
+  --  wi.[IsCisDC] = 1
+  --  and
+  --  cl.[IsSGP] = 1  
+)
+SELECT  TOP(@RowLimit) results.*
+FROM RestrictionResults as results
+ 
+DROP TABLE #VirtualHosts
+DROP TABLE #WindowsComputerAndHostInfo 
+DROP TABLE #WindowsInstalls
+DROP TABLE #HostInstallsRollup
+DROP TABLE #WindowsInstallsEx
+			]]>
+		</SearchSQL>
+		<SearchMapping/>
+		<SearchXML/>
+	</Report>
+
+</CustomReports>

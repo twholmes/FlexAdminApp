@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Compliance Positions</SearchName>
+    <Description>This report mimics the standard Compliance grid view.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[
+        SELECT  
+          --SoftwareLicenseID,
+          [Name] as [LicenseName],
+          case PublisherName when 'Not Set' then '' else PublisherName end as [Publisher],
+          ProductName,
+          case VersionName when 'Not Set' then '' else VersionName end as [Version],    
+          case EditionName when 'Not Set' then '' else EditionName end as [Edition],  
+          ComplianceStatus,
+          LicenseType,
+          NumberPurchased as [Purchased],
+          NumberInstalled as [Consumed],
+          NumberUsed as [Used],
+          NumberAllocated as [Allocated]
+        FROM  
+          [dbo].[SoftwareLicenseByApplication]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+      LicenseName,Publisher,ProductName,Version,Edition,ComplianceStatus,LicenseType,Purchased,Consumed,Used,Allocated
+    </SearchColumns>    	    
+  </Report>
+  <Report ID="2" Exclude="" Action="add" FolderID="">
+    <SearchName>Raw Imported IM Computers</SearchName>
+    <Description>This Report lists the raw computer data imported from the IM system.</Description>
+    <FolderName>Inventory Reports\Raw Inventory</FolderName>    
+    <SearchSQL>
+      <![CDATA[
+        SELECT
+          ic.ComputerName,
+          ic.SerialNo,
+          cc.ConnectionName
+        FROM ImportedComputer ic
+          LEFT OUTER JOIN ComplianceConnection cc
+           ON cc.ComplianceConnectionID = ic.ComplianceConnectionID
+        -- WHERE cc.ConnectionName LIKE '%IM%'
+       ]]>
+    </SearchSQL>
+    <SearchColumns>
+      ComputerName,SerialNo,ConnectionName
+    </SearchColumns>    	    
+  </Report>
+</CustomReports>

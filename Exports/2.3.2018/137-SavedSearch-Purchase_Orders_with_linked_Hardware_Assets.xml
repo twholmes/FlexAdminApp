@@ -1,0 +1,120 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="137" Exclude="" Action="add" FolderID="">
+    <SearchName>Purchase Orders with linked Hardware Assets</SearchName>
+    <Description>This report provides a list of Purchase Orders and the Hardware Assets linked to them, if any.
+Sort options are:
+2nd level Corporate info
+Cost Centre</Description>
+    <FolderName>
+    </FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate purchase order details that user is allowed access
+	CREATE TABLE #PurchaseOrderDetailAllowedOrders (PurchaseOrderID int PRIMARY KEY)
+	INSERT	#PurchaseOrderDetailAllowedOrders
+	SELECT	PurchaseOrderID
+	FROM	TablePurchaseOrderCurrentUser(NULL, NULL, NULL, NULL)
+
+	CREATE TABLE #PurchaseOrderDetailAllowed (PurchaseOrderDetailID int PRIMARY KEY)
+	INSERT  #PurchaseOrderDetailAllowed
+	SELECT  allowed.PurchaseOrderDetailID FROM TablePurchaseOrderDetailCurrentUser(NULL, NULL, NULL, NULL) AS allowed
+	JOIN	PurchaseOrderDetail AS pod ON pod.PurchaseOrderDetailID = allowed.PurchaseOrderDetailID
+	JOIN    #PurchaseOrderDetailAllowedOrders AS po ON po.PurchaseOrderID = pod.PurchaseOrderID
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for purchase order details
+                	SELECT  PurchaseOrderDetailInfo.PurchaseOrderDetailID AS [PurchaseOrderLineID],
+                        PurchaseOrderDetailInfo.ItemDescription AS [Description],
+                        PurchaseOrderDetailInfo.PurchaseOrderNo AS [PurchaseOrderNumber],
+                        PurchaseOrderDetailInfo.PurchaseOrderDate AS [PurchaseOrderDate],
+                        PurchaseOrderDetailInfo.LicensePartNo AS [LicensePartNo],
+                        CorporateStructure2.GroupName AS [CorporateStructure2],
+                        CostCenter.Path AS [CostCenter],
+                        PurchaseOrderDetailInfo.Quantity AS [Quantity],
+                        PurchaseOrderDetailInfo.EffectiveQuantity AS [EffectiveQuantity],
+                        ISNULL(NumberOfAssetsCount.NumberOfAssets, 0) AS [NumberOfAssets],
+                        CAST(PurchaseOrderDetailInfo.PODetailTotalPrice * TotalPriceRate.Rate AS money) AS [TotalPrice],
+                        CAST(PurchaseOrderDetailInfo.UnitPrice * UnitPriceRate.Rate AS money) AS [UnitPrice],
+                        [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_AssetID],
+                        [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_ShortDescription],
+                        [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_SerialNumber],
+                        [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_AssetType],
+                			PurchaseOrderDetailInfo.PurchaseOrderID AS [PurchaseOrderID]
+                	FROM    PurchaseOrderDetailWithPONoSKUMatching AS PurchaseOrderDetailInfo
+                			-- Filter
+                			INNER JOIN #PurchaseOrderDetailAllowed AS filter ON filter.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                			-- Additional joins
+                			LEFT OUTER JOIN PurchaseOrder ON PurchaseOrder.PurchaseOrderID = PurchaseOrderDetailInfo.PurchaseOrderID
+                        LEFT OUTER JOIN TableGroupExByLevel(2, NULL) AS CorporateStructure2 ON PurchaseOrderDetailInfo.PODetailBusinessUnitID LIKE '%.%.%.%' AND CorporateStructure2.GroupExID = SUBSTRING(PurchaseOrderDetailInfo.PODetailBusinessUnitID, 1, CHARINDEX('.', PurchaseOrderDetailInfo.PODetailBusinessUnitID, CHARINDEX('.', PurchaseOrderDetailInfo.PODetailBusinessUnitID, CHARINDEX('.', PurchaseOrderDetailInfo.PODetailBusinessUnitID) + 1) + 1))
+                        LEFT OUTER JOIN GroupEx AS CostCenter ON PurchaseOrderDetailInfo.PODetailCostCenterID = CostCenter.GroupExID
+                        LEFT OUTER JOIN (SELECT COUNT(DISTINCT AssetPurchaseOrder.AssetID) AS NumberOfAssets, AssetPurchaseOrder.PurchaseOrderDetailID FROM AssetPurchaseOrder INNER JOIN #AssetAllowed AS AssetPurchaseOrder_filter ON AssetPurchaseOrder_filter.AssetID = AssetPurchaseOrder.AssetID GROUP BY AssetPurchaseOrder.PurchaseOrderDetailID) AS NumberOfAssetsCount ON NumberOfAssetsCount.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS TotalPriceRate ON TotalPriceRate.CurrencyRateID = PurchaseOrderDetailInfo.PODetailTotalPriceRateID
+                        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS UnitPriceRate ON UnitPriceRate.CurrencyRateID = PurchaseOrderDetailInfo.UnitPriceRateID
+                        -- Link from PurchaseOrderDetail to Assets via AssetPurchaseOrder table
+                        	LEFT OUTER JOIN (
+                        			SELECT  AssetPurchaseOrder.PurchaseOrderDetailID,
+                        					Asset.*
+                        			FROM    AssetPurchaseOrder
+                        					INNER JOIN (
+                        							-- Custom view query for assets
+                        								SELECT  Asset.AssetID AS [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_AssetID],
+                        							        Asset.ShortDescription AS [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_ShortDescription],
+                        							        Asset.SerialNumber AS [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_SerialNumber],
+                        							        AssetTypeI18N.AssetTypeName AS [R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_AssetType]
+                        								FROM    Asset
+                        										-- Filter
+                        										INNER JOIN #AssetAllowed AS filter ON filter.AssetID = Asset.AssetID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID
+                        					) AS Asset ON Asset.R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_AssetID = AssetPurchaseOrder.AssetID
+                        	) AS PurchaseOrderDetailToAsset ON PurchaseOrderDetailToAsset.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Description] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([PurchaseOrderNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([PurchaseOrderDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicensePartNo] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([CorporateStructure2] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([CostCenter] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Quantity] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([EffectiveQuantity] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberOfAssets] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([TotalPrice] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([UnitPrice] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_ShortDescription] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_c4c222f29f7ac784e7e1fcfc32470a89_PurchaseOrderDetailToAsset_SerialNumber] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

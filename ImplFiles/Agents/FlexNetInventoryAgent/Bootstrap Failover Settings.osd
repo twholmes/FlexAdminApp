@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE SOFTPKG SYSTEM "http://www.managesoft.com/softpkg.dtd">
+<?XML::NAMESPACE HREF="http://www.managesoft.com/managesoft.dtd" AS="NETDEPLOY"?>
+<SOFTPKG NAME="ManagedDeviceSettings" TYPE="ClientSettings" VERSION="1,0,0,0" FORMAT="1.5">
+	<TITLE>Bootstrap Failover Settings</TITLE>
+	<NETDEPLOY::PROPERTY NAME="PackageTransferSize">0</NETDEPLOY::PROPERTY>
+	<NETDEPLOY::USERDOMAIN DEFAULT="highest" USERSELECT="True" INHERIT="True"/>
+	<IMPLEMENTATION>
+		<CODEBASE HREF="Bootstrap Failover Settings.ndc"/>
+	</IMPLEMENTATION>
+</SOFTPKG>

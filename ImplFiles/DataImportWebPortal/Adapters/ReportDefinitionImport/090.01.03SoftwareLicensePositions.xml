@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7195" SearchName="090.01.03 Software License Positions" ComplianceSearchType="Custom" ComplianceSearchFolderID="2862" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>This report mimics the standard FNMS Compliance grid view</Description>
+    <FolderPath>Management Views/BOQ</FolderPath>
+    <CreationDate>11/12/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+        SELECT  
+          --SoftwareLicenseID,
+          [Name] as [LicenseName],
+          case PublisherName when 'Not Set' then '' else PublisherName end as [Publisher],
+          ProductName,
+          case VersionName when 'Not Set' then '' else VersionName end as [Version],    
+          case EditionName when 'Not Set' then '' else EditionName end as [Edition],  
+          ComplianceStatus,
+          LicenseType,
+          NumberPurchased as [Purchased],
+          NumberInstalled as [Consumed],
+          NumberUsed as [Used],
+          NumberAllocated as [Allocated]
+        FROM  
+          [dbo].[SoftwareLicenseByApplication]
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

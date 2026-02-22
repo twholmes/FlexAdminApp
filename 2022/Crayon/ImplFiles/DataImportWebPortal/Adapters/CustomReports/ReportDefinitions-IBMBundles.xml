@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>IBM Bundles</SearchName>
+    <Description>This report lists IBM Software Bundle definitions.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+       ;WITH DATA AS 
+       (
+         SELECT 
+           st.SoftwareTitleID,
+           st.FullName as SoftwareTitleName,
+           sth.IsMandatory,
+           sth.IsLocal,
+           sti.SoftwareTitleID AS SoftwareBundleTitleID,        
+           sti.SoftwareTitleName AS SoftwareBundleName,
+           sti.ProductName,
+           IsNull(sti.SoftwareTitleVersion, '') AS SoftwareTitleVersion,
+           IsNull(sti.EditionName, '') AS EditionName,
+           sti.Publisher,
+		       sts.MinNumberApps,              
+           sti.HasInstalls,
+           sti.IsLicensed,
+           sti.IsSoftwareSuite,
+           sti.IsSoftwareSuiteMember
+         FROM SoftwareTitleHierarchy sth
+           JOIN SoftwareTitleInfo AS sti ON sti.SoftwareTitleID = sth.ParentSoftwareTitleID
+           JOIN SoftwareTitle AS st ON st.SoftwareTitleID = sth.ChildSoftwareTitleID
+		       JOIN SoftwareTitleSuite sts on sts.SoftwareTitleID = sth.ParentSoftwareTitleID           
+         WHERE 
+           --sti.IsSoftwareSuite = 1
+           --AND
+           sti.Publisher = 'IBM'
+           --AND
+           --sth.ChildSoftwareTitleID = sti.SoftwareTitleID
+       )
+           
+       SELECT 
+         d.ProductName,
+         d.SoftwareTitleVersion,
+         d.EditionName,
+         d.SoftwareBundleName,
+		     d.MinNumberApps,            
+         d.SoftwareTitleName,
+         d.Publisher,
+         d.IsMandatory,
+         d.IsLocal,
+         d.HasInstalls,
+         d.IsLicensed,
+         d.IsSoftwareSuite,
+         d.IsSoftwareSuiteMember
+       FROM 
+         DATA d
+       WHERE
+         1=1
+       ORDER BY       
+         d.ProductName,
+         d.SoftwareTitleVersion,
+         d.EditionName,
+         d.SoftwareBundleName,
+         d.IsMandatory DESC,
+         d.SoftwareTitleName
+  
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ProductName,SoftwareTitleVersion,EditionName,SoftwareBundleName,MinNumberApps,SoftwareTitleName,Publisher,IsMandatory,IsLocal,HasInstalls,IsLicensed,IsSoftwareSuite,IsSoftwareSuiteMember   	
+    </SearchColumns>          
+  </Report>
+</CustomReports>

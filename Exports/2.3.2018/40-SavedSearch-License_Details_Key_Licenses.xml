@@ -1,0 +1,92 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="40" Exclude="" Action="add" FolderID="">
+    <SearchName>License Details_Key Licenses</SearchName>
+    <Description>This is used to monitor the key licenses required for services delivery.</Description>
+    <FolderName>License Compliance/ManageSoft</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate licenses that match filter
+	CREATE TABLE #SoftwareLicenseFilter (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseFilter
+	SELECT  DISTINCT SoftwareLicense.SoftwareLicenseID
+	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+			INNER JOIN #SoftwareLicenseAllowed AS sl_allowed ON sl_allowed.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+			LEFT OUTER JOIN Category AS Category ON SoftwareLicense.CategoryID = Category.GroupExID
+	WHERE   Category.GroupExID = N'4.1.18.'
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicense.Version AS [Version],
+                        Category.Path AS [Category],
+                        CostCenter.Path AS [CostCenter],
+                        SoftwareLicenseComplianceStatusI18N.StatusDefaultValue AS [LicenseCompliance],
+                        LicenseStatusI18N.DefaultValue AS [LicenseStatus],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        Location.Path AS [Location],
+                        SoftwareLicense.NumberInstalled AS [NumberInstalled],
+                        SoftwareLicense.NumberPurchased AS [NumberPurchased],
+                        SoftwareLicense.NumberUsed AS [NumberUsed],
+                        Publisher.VendorName AS [PublisherName],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseFilter AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN Category AS Category ON SoftwareLicense.CategoryID = Category.GroupExID
+                        LEFT OUTER JOIN GroupEx AS CostCenter ON SoftwareLicense.CostCenterID = CostCenter.GroupExID
+                        LEFT OUTER JOIN SoftwareLicenseComplianceStatusI18N ON SoftwareLicenseComplianceStatusI18N.SoftwareLicenseComplianceStatusID = SoftwareLicense.SoftwareLicenseComplianceStatusID
+                        LEFT OUTER JOIN LicenseStatusI18N ON LicenseStatusI18N.LicenseStatusID = SoftwareLicense.LicenseStatusID
+                        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN GroupEx AS Location ON SoftwareLicense.LocationID = Location.GroupExID
+                        LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Version] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Category] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([CostCenter] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseCompliance] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([LicenseType] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Location] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberInstalled] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberPurchased] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberUsed] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([PublisherName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

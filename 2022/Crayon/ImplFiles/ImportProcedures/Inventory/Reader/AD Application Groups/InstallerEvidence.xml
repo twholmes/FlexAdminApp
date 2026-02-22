@@ -1,0 +1,296 @@
+<Readers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="CreateTargetTempTables"
+			Order="100"
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('tempdb..#InstallerEvidence') IS NOT NULL
+				DROP TABLE #InstallerEvidence
+
+			CREATE TABLE #InstallerEvidence
+			(
+				DisplayName			NVARCHAR(256) COLLATE database_default,
+				Version				NVARCHAR(72) COLLATE database_default,
+				Publisher			NVARCHAR(200) COLLATE database_default,
+				ProductCode			NVARCHAR(55) COLLATE database_default,
+				ExternalIDString	NVARCHAR(100) COLLATE database_default,
+				ExternalID			INT,
+				AccessModeID 		INT,
+				Evidence	 		NVARCHAR(64) COLLATE database_default
+			)
+			
+	
+			IF OBJECT_ID('tempdb..#RemoteUserToApplicationAccess') IS NOT NULL
+				DROP TABLE #RemoteUserToApplicationAccess
+
+			CREATE TABLE #RemoteUserToApplicationAccess
+			(
+				ExternalUserID	 			INT,
+				ExternalInstallerEvidenceID	INT,
+				AccessModeID				INT
+			)
+
+			CREATE UNIQUE CLUSTERED INDEX PK_#RemoteUserToApplicationAccess ON #RemoteUserToApplicationAccess(ExternalUserID, ExternalInstallerEvidenceID)
+						
+		]]>
+	</Reader>
+
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="TransferInstallerEvidence"
+			Order="110"
+			Retries="1">
+		<![CDATA[
+		
+			INSERT INTO #InstallerEvidence (
+				DisplayName,
+				Version,
+				Publisher,
+				ProductCode,
+				ExternalIDString,
+				AccessModeID,
+				Evidence
+			)
+			SELECT
+				Name AS DisplayName, 
+				'' AS Version,
+				'' AS Publisher,
+				'' AS ProductCode,
+				CONVERT(NVARCHAR(100), tadag.GUID) AS ExternalIDString,
+				am.AccessModeID,
+				'AD Group' AS Evidence
+			FROM #ADApplicationGroup AS tadag
+				LEFT OUTER JOIN AccessMode am
+					ON am.DefaultValue = tadag.AccessMode
+			
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' installer evidence records in the source.'
+
+			CREATE INDEX IX_#InstallerEvidence_ExternalIDString ON #InstallerEvidence(ExternalIDString)
+			CREATE INDEX IX_#InstallerEvidence_DisplayName_Version_Publisher ON #InstallerEvidence(DisplayName, Version, Publisher)
+			CREATE INDEX IX_#InstallerEvidence_AccessModeID ON #InstallerEvidence(AccessModeID)
+
+		]]>
+	</Reader>
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="UpdateInstallerEvidenceStringMappings"
+			Order="120"
+			Retries="1">
+		<![CDATA[
+
+				DECLARE @Category varchar(100)
+				SET @Category = 'INSTALLEREVIDENCE'
+
+				-- Clean up string mapping table
+				DELETE FROM dbo.ImportedStringMapping
+				WHERE ComplianceConnectionID = @ComplianceConnectionID
+					AND Category = @Category
+					AND OriginalID NOT IN (
+						SELECT ExternalIDString FROM #InstallerEvidence
+					)
+
+				PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' text mapping records for installer evidence external IDs in the ImportedStringMapping staging table'
+	
+				-- Ensure that string mappings exist
+
+				INSERT dbo.ImportedStringMapping (
+					ComplianceConnectionID,
+					Category,
+					OriginalID
+				)
+					SELECT DISTINCT
+						@ComplianceConnectionID,
+						@Category,
+						ExternalIDString
+					FROM #InstallerEvidence AS tie
+					WHERE NOT EXISTS (
+						SELECT * 
+						FROM dbo.ImportedStringMapping
+						WHERE ComplianceConnectionID = @ComplianceConnectionID
+							AND Category = @Category
+							AND OriginalID = tie.ExternalIDString
+					)
+
+				PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' text mapping records for installer evidence external IDs in ImportedStringMapping staging table'
+					
+				-- Use string mapping to set ExternalID on license user
+
+				UPDATE tie
+				SET
+					ExternalID = MappedID
+				FROM #InstallerEvidence tie
+					INNER JOIN dbo.ImportedStringMapping ism
+						ON ism.ComplianceConnectionID = @ComplianceConnectionID
+							AND ism.Category = @Category
+							AND ism.OriginalID = tie.ExternalIDString
+
+				PRINT N'Updated ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' text mapping records for installer evidence external IDs in ImportedStringMapping staging table'
+
+				CREATE INDEX IX_#InstallerEvidence_ExternalID ON #InstallerEvidence(ExternalID)
+
+		]]>
+	</Reader>
+	<Reader	xsi:type="ExecuteOnTarget"
+			Name="UpdateInstallerEvidence"
+			Order="130"
+			Retries="1">
+		<![CDATA[
+			
+			-- Delete obsolete installer evidences
+			DELETE FROM iie
+			FROM dbo.ImportedInstallerEvidence AS iie
+			WHERE 
+				iie.ComplianceConnectionID = @ComplianceConnectionID
+				AND NOT EXISTS (
+					SELECT 'x'
+					FROM #InstallerEvidence AS tie
+					WHERE tie.ExternalID = iie.ExternalInstallerID
+				)
+							
+			PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' installer evidence records from ImportedInstallerEvidence table that no longer exists in the source'
+			
+			UPDATE iie
+			SET
+				iie.DisplayName = tie.DisplayName,
+				iie.Version = tie.Version,
+				iie.Publisher = tie.Publisher,
+				iie.ProductCode = tie.ProductCode
+			FROM dbo.ImportedInstallerEvidence AS iie
+			INNER JOIN #InstallerEvidence tie
+				ON tie.ExternalID = iie.ExternalInstallerID 
+					AND iie.ComplianceConnectionID = @ComplianceConnectionID
+			
+			PRINT N'Updated ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' installer evidence records in ImportedInstallerEvidence with new source data'
+
+			INSERT INTO dbo.ImportedInstallerEvidence
+			(
+				ComplianceConnectionID,
+				ExternalInstallerID,
+				DisplayName,
+				Version,
+				Publisher,
+				Evidence,
+				ProductCode,
+				AccessModeID
+			)
+			SELECT
+				@ComplianceConnectionID,
+				tie.ExternalID,
+				tie.DisplayName,
+				tie.Version,
+				tie.Publisher,
+				tie.Evidence,
+				tie.ProductCode,
+				tie.AccessModeID
+			FROM #InstallerEvidence AS tie
+			WHERE NOT EXISTS (
+				SELECT 'x'
+				FROM dbo.ImportedInstallerEvidence AS iie
+				WHERE 
+					iie.ComplianceConnectionID = @ComplianceConnectionID
+					AND iie.DisplayName = tie.DisplayName
+					AND iie.Version = tie.Version
+					AND iie.Publisher = tie.Publisher
+					AND iie.ProductCode = tie.ProductCode
+					AND iie.AccessModeID = tie.AccessModeID
+			)
+
+			PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' installer evidence to ImportedInstallerEvidence table from source.'
+
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="GetUsertoApplicationAccess"
+			Order="140"
+			Retries="1">
+		<![CDATA[
+			
+			INSERT INTO #RemoteUserToApplicationAccess(
+				ExternalUserID,
+				ExternalInstallerEvidenceID,
+				AccessModeID
+			)
+			SELECT DISTINCT
+				adu.ActiveDirectoryUserID,
+				tie.ExternalID,
+				tie.AccessModeID
+			FROM
+				dbo.ActiveDirectoryUser adu
+				JOIN dbo.ActiveDirectoryDomain ad
+					ON ad.ActiveDirectoryDomainID = adu.ActiveDirectoryDomainID
+				JOIN dbo.ActiveDirectoryChildObjects adco
+					ON adco.ChildObjectGUID = adu.GUID
+				JOIN #ADApplicationGroup tadag
+					ON tadag.GUID = adco.RootGroupGUID
+				JOIN #InstallerEvidence tie
+					ON tie.ExternalIDString = CONVERT(NVARCHAR(256),tadag.GUID) -- Although not ideal, this is unlikely to impact query performance as there are rarely more than 1000 application groups.
+			WHERE EXISTS (
+				SELECT 1
+				FROM 
+					dbo.ComplianceUser cu
+					JOIN dbo.ComplianceDomain cd
+						ON cd.ComplianceDomainID = cu.ComplianceDomainID
+				WHERE
+					cu.SAMAccountName = adu.SAMAccountName
+					AND
+					cd.QualifiedName = ad.QualifiedName
+				)
+
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N'  Active Directory application user group memberships for users that are in FNMS'
+			
+		]]>
+	</Reader>
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="ImportRemoteUserToApplicationAccess"
+			Order="190"
+			Retries="1">
+		<![CDATA[
+			
+			-- Remove all the installer evidence for the connection
+			DELETE FROM dbo.ImportedRemoteUserToApplicationAccess
+			WHERE 
+				ComplianceConnectionID = @ComplianceConnectionID
+			
+			PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' remote user to application access records.'
+			
+			-- Add new remote user to application access data
+			INSERT INTO dbo.ImportedRemoteUserToApplicationAccess (
+				ComplianceConnectionID,
+				ExternalServerID,
+				ExternalInstallerEvidenceID,
+				ExternalUserID,
+				AccessModeID
+			)
+			SELECT 
+				@ComplianceConnectionID AS ComplianceConnectionID,
+				NULL AS ExternalServerID,
+				trutaa.ExternalInstallerEvidenceID,
+				trutaa.ExternalUserID,
+				trutaa.AccessModeID
+			FROM #RemoteUserToApplicationAccess trutaa
+			
+			PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' new remote user to application access records.'
+
+		]]>
+	</Reader>
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="RemoveTargetTempTables"
+			Order="200"
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('tempdb..#ADApplicationGroup') IS NOT NULL
+				DROP TABLE #ADApplicationGroup
+
+			IF OBJECT_ID('tempdb..#User') IS NOT NULL
+				DROP TABLE #User
+
+			IF OBJECT_ID('tempdb..#InstallerEvidence') IS NOT NULL
+				DROP TABLE #InstallerEvidence
+
+			IF OBJECT_ID('tempdb..#RemoteUserToApplicationAccess') IS NOT NULL
+				DROP TABLE #RemoteUserToApplicationAccess
+				
+		]]>
+	</Reader>	
+</Readers>

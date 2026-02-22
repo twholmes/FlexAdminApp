@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="54" Exclude="" Action="add" FolderID="">
+    <SearchName>UserOfComputer</SearchName>
+    <Description>unknown</Description>
+    <FolderName>Hardware Assets/SoftLicAdmin</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

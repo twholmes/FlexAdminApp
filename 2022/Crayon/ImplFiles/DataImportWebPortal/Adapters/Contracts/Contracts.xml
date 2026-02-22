@@ -1,0 +1,241 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="ContractsSpreadsheet" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-ContractsSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+      Query="
+SELECT * FROM [Contracts$]
+WHERE 
+  [ContractNo] IS NOT NULL
+  OR
+  [VendorName] IS NOT NULL
+" 
+    
+  TraceActions="created,deleted,updated,rejected" 
+  TraceFields="[ContractNo]" 
+  tracelifetime="0 Day(s)" 
+  BulkCopyTimeOut="0" 
+  BulkCopyBatchSize="1"
+  UsePhysicalTable="True" 
+  datatablename="dbo.ECMImport_Contracts"
+  >
+  
+      <Log Name="NewLog" Output="File" LogLevel="Debug" Content="All" FileName="C:\LogFiles\ContractsSpreadsheet_[DATE]_[TIME].log" />
+    
+      <Object Type="Custom" Name="Validate Source Data" TimeOut="-1" Query="
+DECLARE @ImportObjectID INT
+EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+DECLARE @Rule nvarchar(MAX)
+DECLARE @ErrorMsg nvarchar(256)
+
+/* Validate operator can create records */
+SET @ErrorMsg = 'You require rights to create contracts and purchases to import this data'
+SET @Rule = '
+  NOT EXISTS(
+    SELECT 1
+    FROM dbo.RightsHasAccess(''CMPurchaseOrders'', ''create'')
+    WHERE HasAccess = 1
+  )
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, NULL, NULL, 1
+
+/* Validate that the column types are set correctly */
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'ContractNo', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'ContractName', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'MasterContractNo', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'StartDate', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'EndDate', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'ReviewDate', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'RenewalDate', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'Location', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'Cost Center', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'Corporate Unit', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorName', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorPhone', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorEmail', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorWebsite', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorAddressStreet', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorAddressCity', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorAddressState', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorAddressPostCode', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'VendorAddressCountry', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'Processed by', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Contracts', 'Comments', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Contract Value', 'float'
+
+/* Validate that values are provided in mandatory columns */
+EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'ContractNo'
+
+/* Validate that values are provided in mandatory on creation columns */
+SET @ErrorMsg = 'Column [@SourceColumn1Name@] is mandatory when creating a new contract'
+SET @Rule = '
+  source.[ContractNo] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.Contract co
+    WHERE 
+      co.ContractNo = source.[ContractNo]
+  ) 
+  AND ISNULL(source.[@SourceColumn1Name@],'''') = ''''
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg,'ContractNo'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ContractName'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ContractTypeID'
+
+/* Validate the Vendor and Publisher */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] does not match any Vendor records'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.Vendor v
+    WHERE v.VendorName = source.[@SourceColumn1Name@]
+  )
+'
+/* EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'VendorName' */
+
+/* Validate that the Vendor is 64 characters or less */ 
+DECLARE @RuleTemplate nvarchar(MAX)
+DECLARE @ErrorMsgTemplate nvarchar(256) 
+
+SET @ErrorMsgTemplate = 'The @SourceColumn1Name@ must be @ColLength@ characters or less'
+SET @RuleTemplate = '
+  LEN([@SourceColumn1Name@]) &gt; @ColLength@
+' 
+SET @ErrorMsg = REPLACE(@ErrorMsgTemplate, '@ColLength@', '64')
+SET @Rule = REPLACE(@RuleTemplate, '@ColLength@', '64')
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'VendorName', NULL, 0
+
+/* Validate the Contract Number */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] does not match any Contract records'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.Contract c
+    WHERE c.ContractNo = source.[@SourceColumn1Name@]
+  )
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'MasterContractNo'
+
+SET @ErrorMsg = 'There are multiple existing contracts that match the contract number [@SourceColumn1Value@]: cannot identify which record to update'
+SET @Rule = '
+    source.[@SourceColumn1Name@] != ''''
+    AND (
+      SELECT COUNT(*) 
+      FROM dbo.Contract c 
+      WHERE 
+        c.ContractNo = source.[@SourceColumn1Name@] 
+    ) &gt; 1
+  '
+/* EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ContractNo' */
+
+
+/* Validate Boolean types */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] should be TRUE, FALSE or be left blank'
+SET @Rule = '
+  CONVERT(NVARCHAR, source.[@SourceColumn1Name@]) NOT IN (''TRUE'', ''FALSE'', ''0'', ''1'', '''')
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ContractNeverExpires'
+
+
+/* Validate Enterprise Groups */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in not a recognised @SourceColumn1Name@'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.GroupEx g
+      JOIN dbo.GroupTypeI18N gt
+        ON gt.GroupTypeID = g.GroupTypeID
+    WHERE gt.DefaultValue = ''@SourceColumn1Name@''
+      AND g.[Path] = CONVERT(NVARCHAR, source.[@SourceColumn1Name@])
+  )
+'
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Location'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Corporate Unit'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Cost Center'
+
+
+/* Execute validation rules */
+EXEC dbo.CustomAdapterValidationExecuteRules
+  @ImportObjectID = @ImportObjectID,
+  @SourceTableName = 'ECMImport_Contracts',
+  @TraceField = 'ISNULL(CONVERT(NVARCHAR,[ContractNo]), ''&lt;NULL&gt;'') + ''/'' + ISNULL(CONVERT(NVARCHAR,[VendorName]), ''&lt;NULL&gt;'')'
+" />
+
+ 
+      <Object Type="Vendor" Name="Vendor" Update="True" Create="True" OutputField="Vendor_ID">
+        <Property Type="vendorname" Name="Vendor Name" ValueType="Field Value" Value="VendorName" UseForMatching="True" Length="64" />
+        <Property Type="businessphonenumber" Name="Phone Number" Update="Do not blank" ValueType="Field Value" Value="VendorPhone" Length="30" />
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="VendorEmail" Length="200" />
+        <Property Type="website" Name="Website" Update="Do not blank" ValueType="Field Value" Value="VendorWebsite" Length="200" />
+        <Property Type="address_street" Name="Address - Street" Update="Do not blank" ValueType="Field Value" Value="VendorAddressStreet" Length="200" />
+        <Property Type="address_city" Name="Address - City" Update="Do not blank" ValueType="Field Value" Value="VendorAddressCity" Length="200" />
+        <Property Type="address_state" Name="Address - State" Update="Do not blank" ValueType="Field Value" Value="VendorAddressState" Length="200" />
+        <Property Type="address_zip" Name="Address - Zip" Update="Do not blank" ValueType="Field Value" Value="VendorAddressPostCode" Length="20" />
+        <Property Type="address_country" Name="Address - Country" Update="Do not blank" ValueType="Field Value" Value="VendorAddressCountry" Length="100" />
+      </Object>
+      
+      <Object Type="CorporateUnit" Name="Corporate Unit" Update="False" Create="False" OutputField="CorporateUnit_ID">
+        <Property Type="groupcn" Name="Name" ValueType="Field Value" Value="CorporateUnit" Length="64" RegexSplit="/" OnMissingFieldValue="Remove Property" />
+        <Property Type="groupexid" Name="ID" ValueType="Field Value" Value="CorporateUnit_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" OnMissingFieldValue="Remove Property" />
+      </Object>
+	  
+      <Object Type="Location" Name="Location" Update="False" Create="False" OutputField="Location_ID">
+        <Property Type="groupcn" Name="Name" ValueType="Field Value" Value="Location" Length="128" RegexSplit="/" OnMissingFieldValue="Remove Property" />
+        <Property Type="groupexid" Name="ID" ValueType="Field Value" Value="Location_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" OnMissingFieldValue="Remove Property" />
+      </Object>
+      
+      <Object Type="Contract" Name="Contract" Update="True" Create="True" OutputField="Contract_ID">
+        <Property Type="contractno" Name="Contract Number" ValueType="Field Value" Value="ContractNo" UseForMatching="True" Length="60" />
+        <Property Type="contractname" Name="Contract Name" ValueType="Field Value" Value="ContractName   " Length="100" />
+        <Property Type="contracttype" Name="ContractType" ValueType="Field Value" Value="ContractTypeID" Length="1000" />
+        <Property Type="contractstatus" Name="ContractStatus" ValueType="Field Value" Value="ContractStatusID" Length="1000" />
+        <Property Type="startdate" Name="Start Date" ValueType="Field Value" Value="StartDate" DataType="Date" />
+        <Property Type="enddate" Name="End Date" ValueType="Field Value" Value="EndDate" DataType="Date" />
+        <Property Type="neverexpires" Name="Never Expires" ValueType="Field Value" Value="ContractNeverExpires" />
+        <Property Type="preexpirydate" Name="Pre-Expiry Date" ValueType="Field Value" Value="ReviewDate" DataType="Date" />
+        <Property Type="renewaldate" Name="Renewal Date" ValueType="Field Value" Value="RenewalDate" DataType="Date" />
+        <Property Type="vendorid" Name="Vendor ID" ValueType="Field Value" Value="Vendor_ID" DataType="Integer" />
+        <Property Type="businessunitid" Name="Corporate Unit ID" ValueType="Field Value" Value="CorporateUnit_ID" Length="128" OnMissingFieldValue="Remove Property"/>
+        <Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="Location_ID" Length="128" OnMissingFieldValue="Remove Property"/>
+        <Property Type="comments" Name="Comments" Update="Do not blank" ValueType="Field Value" Value="Comments" />
+        <Property Type="totalvalue" Name="Global Amount" ValueType="Field Value" Value="Contract Value" DataType="Float" />
+      </Object>
+      
+      <Object Type="Custom" Name="PurchaseProgram" TimeOut="-1" 
+        Query="
+UPDATE c
+SET
+  c.PurchaseProgramID = pp.PurchaseProgramID
+FROM Contract c
+JOIN [ECMIMport_Contracts] icv ON icv.Contract_ID = c.ContractID
+JOIN PurchaseProgram pp ON pp.Name = icv.PurchaseProgram
+      "/>
+      
+      <Object Type="Contract" Name="Lookup Master Contract" Update="False" Create="False" OutputField="Lookup_MasterContract_ID">
+        <Property Type="contractno" Name="Contract No" Update="Never" ValueType="Field Value" Value="MasterContractNo" UseForMatching="True" Length="60" UseNullValueForMatching="RemoveProperty"/>
+      </Object>
+      
+      <Object Type="Contract" Name="Set Master Contract" Update="True" Create="False" OutputField="Set_MasterContract_ID">
+        <Property Type="contractno" Name="Contract No" ValueType="Field Value" Value="ContractNo" UseForMatching="True" Length="60" />
+        <Property Type="mastercontractid" Name="Master Contract ID" ValueType="Field Value" Value="Lookup_MasterContract_ID" DataType="Integer" OnMissingFieldValue="Remove Property"/>
+      </Object>
+      
+      <Object Type="Contract" Name="Lookup Previous Contract" Update="False" Create="False" OutputField="Lookup_Previous_Contract_ID">
+        <Property Type="contractno" Name="Contract No" Update="Do not blank" ValueType="Field Value" Value="PreviousContractNo" UseForMatching="True" Length="60" UseNullValueForMatching="RemoveProperty"/>
+      </Object>
+      
+      <Object Type="Contract" Name="Set Previous Contract" Update="True" Create="False" OutputField="Set_PreviousContract_ID">
+        <Property Type="contractno" Name="Contract Number" ValueType="Field Value" Value="ContractNo" UseForMatching="True" Length="60" />		
+        <Property Type="previouscontractid" Name="Previous Contract ID" Update="Do not blank" ValueType="Field Value" Value="Lookup_Previous_Contract_ID" DataType="Integer" OnMissingFieldValue="Remove Property"/>
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

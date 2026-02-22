@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="190" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportAssetPurchases</SearchName>
+    <Description>Export FNMS Asset Purchases.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+         apo.[AssetID]
+         ,ai.[ShortDescription] as [AssetName]
+         ,ai.[AssetTypeName]
+         ,ai.[SerialNumber]
+         ,apo.[PurchaseOrderDetailID]
+         ,podi.[PurchaseOrderNo]
+         ,podi.[SequenceNumber] as [POSequenceNumber]
+         ,podi.[ItemDescription] as [POItemDescription]
+         ,podi.[VendorName] as [POVendorName]
+      FROM dbo.[AssetPurchaseOrder] as apo
+        JOIN dbo.[AssetInfo] as ai on ai.[AssetID] = apo.[AssetID]
+        JOIN dbo.[PurchaseOrderDetailInfo] as podi on podi.PurchaseOrderDetailID = apo.[PurchaseOrderDetailID]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

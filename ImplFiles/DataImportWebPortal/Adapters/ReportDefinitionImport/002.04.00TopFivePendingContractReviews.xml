@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="0" SearchName="002.04.00 Top Five Pending Contract Reviews" ComplianceSearchType="Custom" ComplianceSearchFolderID="0" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>SQL view [CustomViewSoftwareLicenseContractReviews] that lists the top five pending contract reviews</Description>
+    <FolderName>Governance Reports (SQL)</FolderName>
+    <CreationDate>22/04/2021</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT TOP(5)
+  slcr.[ReviewDateRank]  
+  ,slcr.[Name]
+  ,slcr.[VendorName]
+  ,slcr.[LicenseType]
+  ,slcr.[ContractNo]
+  ,slcr.[ContractReviewDate]
+  ,slcr.[DaysTillContractReview]
+FROM dbo.[CustomViewSoftwareLicenseContractReviews] AS slcr
+WHERE slcr.[DaysTillContractReview] is not null
+ORDER BY slcr.ReviewDateRank, slcr.SoftwareLicenseID
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

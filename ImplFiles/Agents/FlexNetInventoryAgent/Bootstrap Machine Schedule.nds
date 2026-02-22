@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Schedule PUBLIC "ManageSoft schedule" "http://www.managesoft.com/dtd/schedule.dtd">
+
+<Schedule NAME="Bootstrap Machine Schedule" TIMEDATESTAMP="20121016T005131Z" SCHEDSCHEMA="60">
+	<Event NAME="Generate Inventory" NETWORK="False" IDLEDURATION="82800" CATCHUP="Never" ID="{6068F21A-5590-4C52-B814-8F314F312DDE}">
+		<Trigger TYPE_PARAM="1" TIMESTART="120000" DATESTART="20111103" TYPE="Daily" REPEAT="14400" TIMEWINDOW="14400" DURATION="86400"/>
+		<LogicalCommand ACTION="Report" COMPONENT="Tracker" PARAM="-o Upload=False -o UserInteractionLevel=Quiet"/>
+	</Event>
+	<Event NAME="Apply Machine Policy" NETWORK="True" IDLEDURATION="82800" CATCHUP="Never" ID="{BA393A03-BF7F-4280-AB24-E18D83681A9C}">
+		<LogicalCommand ACTION="Apply" COMPONENT="PolicyClient" PARAM="-t Machine -o UserInteractionLevel=Quiet"/>
+		<Trigger TYPE_PARAM="1,1" TIMESTART="120000" DATESTART="20111103" TYPE="Weekly" REPEAT="18000" TIMEWINDOW="18000" DURATION="604800"/>
+		<Trigger TYPE_PARAM="900" TIMESTART="144712" DATESTART="20111103" MAXDELAY="0" TYPE="OnConnect"/>
+	</Event>
+	<Event NAME="Update Client Settings" NETWORK="True" IDLEDURATION="82800" CATCHUP="Never" ID="{CDC547B4-5ED4-4757-989A-6B35791D8848}">
+		<LogicalCommand ACTION="Install" COMPONENT="Launcher" PARAM="$(ScheduleRootURL)/ClientSettings/Default%20Failover%20Settings/Default%20Failover%20Settings.osd -o PkgType=ClientSettings -o UserInteractionLevel=Quiet"/>
+		<Trigger TYPE_PARAM="600" TIMESTART="144906" DATESTART="20111103" MAXDELAY="0" TYPE="OnConnect"/>
+		<Trigger TYPE_PARAM="1,1" TIMESTART="120000" DATESTART="20111103" TYPE="Weekly" REPEAT="18000" TIMEWINDOW="18000" DURATION="604800"/>
+	</Event>
+	<Event NAME="Upload Client Files" NETWORK="True" IDLEDURATION="39600" ID="{0D84D901-E07E-4F63-ACDC-1CBCD48FCEC9}" CATCHUP="Never">
+		<LogicalCommand ACTION="Upload" COMPONENT="Uploader" PARAM="-a"/>
+		<Trigger TYPE_PARAM="1,1" TIMESTART="120000" DATESTART="20111103" TYPE="Weekly" REPEAT="46800" TIMEWINDOW="46800" DURATION="604800"/>
+		<Trigger TYPE_PARAM="1200" TIMESTART="145127" DATESTART="20111103" TYPE="OnConnect"/>
+	</Event>
+</Schedule>

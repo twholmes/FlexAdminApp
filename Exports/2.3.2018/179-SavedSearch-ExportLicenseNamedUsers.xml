@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="179" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicenseNamedUsers</SearchName>
+    <Description>Export FNMS Licensed Named Users.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT 
+         sla.[SoftwareLicenseAllocationID]      
+         ,sl.Name    
+         ,cu.UserName             
+         ,sla.[ComplianceUserID]                   
+         ,sla.[SoftwareLicenseID]                          
+       FROM [dbo].[SoftwareLicenseAllocation] as sla
+         JOIN SoftwareLicense as sl on sl.SoftwareLicenseID = sla.SoftwareLicenseID                                
+         LEFT OUTER JOIN dbo.ComplianceUser as cu on cu.ComplianceUserID = sla.ComplianceUserID
+      WHERE sl.LicenseTypeID = 13
+]]></SearchSQL>
+  </Report>
+</CustomReports>

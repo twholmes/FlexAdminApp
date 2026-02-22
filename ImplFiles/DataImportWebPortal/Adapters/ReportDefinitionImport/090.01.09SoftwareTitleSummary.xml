@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7203" SearchName="090.01.09 Software Title Summary" ComplianceSearchType="Custom" ComplianceSearchFolderID="2862" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>STS</Description>
+    <FolderName>Management Views/BOQ</FolderName>
+    <CreationDate>11/12/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+       SELECT
+         sts.[SoftwareTitleID]
+         --,[SoftwareTitleTypeID]
+         ,sts.[SoftwareTitleName]
+         ,sts.[SoftwareTitleVersion]
+         ,sts.[EditionName]
+         ,sts.[ProductName]
+         ,sts.[Publisher]
+	       ,(ROW_NUMBER() OVER(PARTITION BY sts.[SoftwareTitleProductID], sts.[EditionName] ORDER BY sts.[SoftwareTitleName], sts.[VersionWeight] desc) - 1) AS [NMinus]         
+         ,sts.[EditionWeight]
+         ,sts.[VersionWeight]
+         --,[SoftwareTitleProductID]
+         --,[SoftwareTitleActionID]
+         --,sts.[SoftwareTitleClassificationID]
+         ,sc.[DefaultValue] as [Classification]
+         --,[SoftwareTitlePublisherID]
+         --,[IsMonitoringSessions]
+         --,[UsageSessions]
+         --,[IsMonitoringActiveTime]
+         --,[UsageActiveTime]
+         --,[UsagePeriod]
+         --,[Comments]
+         --,[SKU]
+         ,sts.[CategoryID]
+         ,sts.[IsLicensable]
+         ,sts.[IsSoftwareSuite]
+         ,sts.[IsSoftwareSuiteMember]
+         --,[IsSharableToLibrary]
+         --,[OperatorManageStateID]
+         ,sts.[HasInstalls]
+         ,inst.[InstallCount]
+         ,inst.[UsedCount]
+         ,sts.[StartOfLifeDate]
+         ,sts.[ReleaseDate]
+         ,sts.[EndOfSalesDate]
+         ,sts.[SupportedUntil]
+         ,sts.[ExtendedSupportUntil]
+         ,sts.[EndOfLifeDate]
+      FROM [dbo].[SoftwareTitleSummary] as sts
+      JOIN [dbo].[SoftwareTitleClassificationI18N] as sc on sc.[SoftwareTitleClassificationID] = sts.[SoftwareTitleClassificationID]
+      LEFT OUTER JOIN
+      (
+        SELECT
+	      isw.[SoftwareTitleID]
+          ,count(isw.[SoftwareTitleID]) as [InstallCount]
+          ,count(isw.[IsUsed]) as [UsedCount]
+        FROM [dbo].[InstalledSoftware] as isw
+        GROUP BY isw.[SoftwareTitleID]
+      ) as inst on inst.[SoftwareTitleID] = sts.[SoftwareTitleID]
+      
+      
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

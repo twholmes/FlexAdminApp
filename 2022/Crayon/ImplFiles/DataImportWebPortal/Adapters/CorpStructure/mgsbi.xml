@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+    <Import Type="Excel" Name="CorpStructure" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-CorpStructure-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+    	Query="select * from [CorpUnits$]"
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="(ISNULL([COLLEGE], '&lt;NULL&gt;') + '/' + ISNULL([Short Desc], '&lt;NULL&gt;'))" 
+      CleanUpControlCharOn="" 
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_CorpStructure" 
+    >
+
+    <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+      
+    <Object Type="Custom" Name="Add Columns" Query="      
+      IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_CorpStructure' AND column_name = 'Path')
+      ALTER TABLE dbo.[ECMImport_CorpStructure] ADD [Path] nvarchar(200)
+    "/>
+ 
+    <!--
+      Initialise View Definitions
+    -->      
+    <Object Type="Custom" Name="Initialise View Definitions" Query="          	
+      UPDATE dbo.[ECMImport_CorpStructure]
+      SET [Path] = 'ANU/' + REPLACE(ISNULL([College Title], 'unknown'), '/', '') + '/' + REPLACE(ISNULL([Bud Unit Title], 'unknown'), '/', '') + '/' + REPLACE(ISNULL([Dept], 'unknown'), '/', '')
+    "/>
+
+    <Object Type="CorporateUnit" Name="Corporate Unit" Update="True" Create="True" OutputField="CorporateUnit_ID">
+      <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CorporateUnit_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Path" UseForMatching="True" Length="128" RegexSplit="/" />
+      <Property Type="comments" Name="Description" Update="Do not blank" ValueType="Field Value" Value="Descr" />
+      <Property Type="address_city" Name="Address - City" Update="Do not blank" ValueType="Fixed Value" Value="Canberra" Length="200" />      
+    </Object>
+
+	  </Import>
+  </Imports>
+</root>

@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="171" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportPurchaseOrdersSQL</SearchName>
+    <Description>This report exports Purchase Order records using a custom SQL query</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+    po.[PurchaseOrderID]
+    ,po.[PurchaseOrderNo]
+    ,v.[VendorName]
+    ,po.[PurchaseOrderDate] AS [PurchaseDate]
+    ,posx.[PurchaseOrderStatus] AS [Status]
+    ,po.[TotalPrice]
+    ,po.[SalesTax]
+    ,po.[ShippingAndHandling]
+    ,cri.[CurrencyCode]
+    ,cri.[SnapshotDate] AS [CurrencyDate]
+    ,cri.[SnapshotName] AS [CurrencySnapshotName]
+    ,cri.[Rate] AS [CurrencyRate]
+    ,po.[RequestNo]
+    ,po.[RequestDate]
+    ,po.[ShippingDate]
+    ,c.[ContractNo]        
+    ,g1.[Path] AS [Location]
+    ,g3.[Path] AS [BusinessUnit]
+    ,g2.[Path] AS [CostCenter]
+    ,g4.[Path] AS [Category]
+    ,po.[Comments]
+  FROM dbo.[PurchaseOrder] AS po
+    LEFT OUTER JOIN dbo.[Vendor] as v ON v.VendorID = po.VendorID
+    LEFT OUTER JOIN dbo.[Contract] AS c ON po.[ContractID] = c.[ContractID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g1 ON po.[LocationID] = g1.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g2 ON po.[CostCenterID] = g2.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g3 ON po.[BusinessUnitID] = g3.[GroupExID]
+    LEFT OUTER JOIN dbo.[GroupEx] AS g4 ON po.[CategoryID] = g4.[GroupExID]
+    LEFT OUTER JOIN dbo.CurrencyRateInfo AS cri ON cri.CurrencyRateID = po.TotalPriceRateID
+    LEFT OUTER JOIN
+    (
+      SELECT
+        pos.[PurchaseOrderStatusID],
+        rsct.[ResourceValue] AS [PurchaseOrderStatus]
+      FROM dbo.[PurchaseOrderStatusI18N] pos
+        JOIN dbo.ResourceStringCultureType rsct ON pos.ResourceName = rsct.ResourceString and rsct.CultureType = 'en-US'
+    ) posx ON posx.[PurchaseOrderStatusID] = po.[PurchaseOrderStatusID]
+  ORDER BY po.[PurchaseOrderNo]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

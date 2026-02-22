@@ -1,0 +1,58 @@
+Use [FNMSCompliance]
+
+/*
+SELECT 
+  [ROWNUMBER]
+  ,[Dept]
+  ,[Status]
+  ,[Descr]
+  ,[Short Desc]
+  ,[COLLEGE]
+  ,[College Title]
+  ,[Bud Unit]
+  ,[Bud Unit Title]
+  ,[matched]
+  ,[created]
+  ,[updated]
+  ,[rejected]
+  ,[deleted]
+  ,[rejectedreason]
+  ,[Path]
+  ,[CorporateUnit_ID]
+FROM [dbo].[ECMImport_CorpStructure]
+*/
+
+SELECT 
+  [GroupID]
+  ,[GroupTypeID]
+  ,[BusinessView]
+  ,[Path]
+  ,[NextChild]
+  ,[GroupExID]
+  ,[BusinessPhoneNumber]
+  ,[FaxPhoneNumber]
+  ,[Address_Street]
+  ,[Address_City]
+  ,[Address_State]
+  ,[Address_ZIP]
+  ,[Address_Country]
+  ,[Email]
+  ,[Comments]
+  ,[IsStockLocation]
+  ,[ContactID]
+  ,[ManagerID]
+  ,[GroupCN]
+  ,[NameResourceName]
+  ,[DescriptionResourceName]
+  ,[ParentGroupExID]
+  ,[TreeLevel]
+  ,[TreePath]
+  ,[SpecifiedRegion]
+  ,[RegionID]
+  ,[IsShared]
+FROM [dbo].[CorporateUnit]
+WHERE [Path] like 'ANU/%'
+
+
+DELETE FROM [dbo].[CorporateUnit]
+WHERE [Path] like 'ANU/%'

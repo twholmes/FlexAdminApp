@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="CSV" Delimiter="Comma" Name="Import1" Template="" Enabled="False" AccountIsEncrypted="True" ConnectionString="1|M/kTny6sacVg0a7HDtE/zJuuGZ7lV9gvxpf+LZpzFbsBVqpAMTQCjSC6GlXqekVq60OA+oiBWXr/pufAZiCXSxsmsRMKITFN7gCTg2PfDOZgWiKV33nhEC72vgTO2tKRffROWl4LMdL1mx5Bfz7JKrHlnUGRaHI6twQ87iooJLi1+Ei00hjOVLRBqYeYg4MOfl0tdnNyOgsw0Lc7nH3VYJFEuB1h+GuXTzA5JPGORkY9T5QzSZfsETTCvfu8ipA5QhlFXotqWmCxfudmOC6Q8w==" Query="select * from [SpecialPurpose.csv]" FileName="C:\Users\uqglonds\Desktop\SpecialPurpose.csv">
+      <Object Type="Category" Name="Category" Update="False" Create="False" OutputField="Category_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Fixed Value" Value="Hardware/Computer/Special Purpose (DSS)" UseForMatching="True" Length="128" RegexSplit="/" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="Category_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      <Object Type="Asset" Name="Asset" Update="True" Create="False" OutputField="Asset_ID">
+        <Property Type="shortdescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="Hostname" UseForMatching="True" Length="256" />
+        <Property Type="categoryid" Name="Category ID" ValueType="Field Value" Value="Category_ID" Length="128" />
+      </Object>
+    </Import>
+  </Imports>
+</root>

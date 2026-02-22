@@ -1,0 +1,102 @@
+﻿<Readers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="AddAccessMode" 
+			Order="100" 
+			Retries="1">
+		<![CDATA[
+
+			DECLARE @ResourceString NVARCHAR(256)
+			SET @ResourceString = 'AccessMode.HorizonApps'
+
+			DECLARE @ResourceValue NVARCHAR(256)
+			SET @ResourceValue = 'Horizon Apps'
+
+
+
+			IF NOT EXISTS (SELECT 1 FROM ComplianceResourceString WHERE ResourceString = @ResourceString)
+			BEGIN
+				INSERT INTO ComplianceResourceString (ResourceString)
+				VALUES (@ResourceString)
+			END
+
+
+			IF NOT EXISTS (SELECT 1 FROM ResourceStringCultureType WHERE ResourceString = @ResourceString)
+			BEGIN
+				INSERT INTO ResourceStringCultureType (CultureType, ResourceString, ResourceValue)
+				VALUES ('en-US', @ResourceString, @ResourceValue)
+			END
+
+			DECLARE @AccessModeID INT
+			SET @AccessModeID = 1001
+			DECLARE @msg NVARCHAR(MAX)
+
+			IF NOT EXISTS (SELECT 1 FROM AccessMode WHERE ResourceName = @ResourceString)
+			BEGIN
+				SET @msg = 'Adding new AccessMode "' + @ResourceString + '" with ID "' + CONVERT(NVARCHAR(10), @AccessModeID) + '"'
+				PRINT @msg
+
+				IF EXISTS (SELECT 1 FROM AccessMode WHERE AccessModeID = @AccessModeID)
+				BEGIN
+					SET @msg = 'An access mode with ID ' + CONVERT(NVARCHAR(10), @AccessModeID) + ' already exists.'
+					RAISERROR(@msg,16,1)
+				END
+
+				SET IDENTITY_INSERT AccessMode ON
+				INSERT INTO AccessMode (AccessModeID, ResourceName, DefaultValue)
+				VALUES (1001, @ResourceString, @ResourceValue)
+				SET IDENTITY_INSERT AccessMode OFF
+		END
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateADApplicationGroupTable" 
+			Order="110" 
+			Retries="1">
+		<![CDATA[
+			
+			IF OBJECT_ID('tempdb..#ADApplicationGroup') IS NOT NULL
+				DROP TABLE #ADApplicationGroup
+							
+			CREATE TABLE #ADApplicationGroup
+			(
+				GUID		UNIQUEIDENTIFIER,
+				Name		NVARCHAR(128) COLLATE database_default,
+				AccessMode	NVARCHAR(100) COLLATE database_default
+			)
+				
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="GetADApplicationGroups" 
+			Order="120" 
+			Retries="1">
+		<![CDATA[
+
+			INSERT INTO #ADApplicationGroup (
+				GUID,
+				Name,
+				AccessMode
+			)
+			SELECT 
+				adg.GUID,
+				adg.Name,
+				'Horizon Apps' AS AccessMode
+			FROM ActiveDirectoryGroup adg
+				JOIN ActiveDirectoryDomain ad 
+					ON ad.ActiveDirectoryDomainID = adg.ActiveDirectoryDomainID
+			WHERE 
+				adg.Name LIKE 'UQ-DW-RDS-%'
+				AND
+				ad.QualifiedName = 'uq.edu.au'
+			
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' AD application groups.'
+
+			CREATE INDEX IX_#ADApplicationGroup_GUID ON #ADApplicationGroup(GUID)
+
+		]]>
+	</Reader>
+
+</Readers>

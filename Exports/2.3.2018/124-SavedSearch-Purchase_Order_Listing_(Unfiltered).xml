@@ -1,0 +1,192 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="124" Exclude="" Action="add" FolderID="">
+    <SearchName>Purchase Order Listing (Unfiltered)</SearchName>
+    <Description>Licenses against Purchase Orders - Includes:
+Corporate Unit
+Cost Centre
+Asset
+Inventory Device
+Calculated User</Description>
+    <FolderName>SAH Views</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate purchase order details that user is allowed access
+	CREATE TABLE #PurchaseOrderDetailAllowedOrders (PurchaseOrderID int PRIMARY KEY)
+	INSERT	#PurchaseOrderDetailAllowedOrders
+	SELECT	PurchaseOrderID
+	FROM	TablePurchaseOrderCurrentUser(NULL, NULL, NULL, NULL)
+
+	CREATE TABLE #PurchaseOrderDetailAllowed (PurchaseOrderDetailID int PRIMARY KEY)
+	INSERT  #PurchaseOrderDetailAllowed
+	SELECT  allowed.PurchaseOrderDetailID FROM TablePurchaseOrderDetailCurrentUser(NULL, NULL, NULL, NULL) AS allowed
+	JOIN	PurchaseOrderDetail AS pod ON pod.PurchaseOrderDetailID = allowed.PurchaseOrderDetailID
+	JOIN    #PurchaseOrderDetailAllowedOrders AS po ON po.PurchaseOrderID = pod.PurchaseOrderID
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate computers that user is allowed access
+	CREATE TABLE #ComplianceComputerAllowed (ComplianceComputerID int PRIMARY KEY)
+	INSERT  #ComplianceComputerAllowed SELECT * FROM TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate users that user is allowed access
+	CREATE TABLE #ComplianceUserAllowed (ComplianceUserID int PRIMARY KEY)
+	INSERT  #ComplianceUserAllowed SELECT * FROM TableComplianceUserCurrentUser(NULL, NULL, NULL, NULL, 1)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderLineID],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_Description],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CorporateStructure],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_EffectiveQuantity],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderNumber],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CostCenter],
+                        [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderDate],
+                        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetID],
+                        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_ShortDescription],
+                        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetStatus],
+                        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetType],
+                        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerID],
+                        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerName],
+                        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID],
+                        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        -- Link from License to Purchase Order Lines via EntitlementTransaction table
+                        	LEFT OUTER JOIN (
+                        			SELECT  EntitlementTransactionAccepted.SoftwareLicenseID,
+                        					PurchaseOrderDetailInfo.*
+                        			FROM    EntitlementTransactionAccepted
+                        					INNER JOIN (
+                        							-- Custom view query for purchase order details
+                        								SELECT  PurchaseOrderDetailInfo.PurchaseOrderDetailID AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderLineID],
+                        							        PurchaseOrderDetailInfo.ItemDescription AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_Description],
+                        							        CorporateStructure.Path AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CorporateStructure],
+                        							        PurchaseOrderDetailInfo.EffectiveQuantity AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_EffectiveQuantity],
+                        							        PurchaseOrderDetailInfo.PurchaseOrderNo AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderNumber],
+                        							        CostCenter.Path AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CostCenter],
+                        							        PurchaseOrderDetailInfo.PurchaseOrderDate AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderDate],
+                        							        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetID],
+                        							        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_ShortDescription],
+                        							        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetStatus],
+                        							        [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetType],
+                        							        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerID],
+                        							        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerName],
+                        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID],
+                        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName],
+                        										PurchaseOrderDetailInfo.PurchaseOrderID AS [R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderID]
+                        								FROM    PurchaseOrderDetailWithPONoSKUMatching AS PurchaseOrderDetailInfo
+                        										-- Filter
+                        										INNER JOIN #PurchaseOrderDetailAllowed AS filter ON filter.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN GroupEx AS CorporateStructure ON PurchaseOrderDetailInfo.PODetailBusinessUnitID = CorporateStructure.GroupExID
+                        							        LEFT OUTER JOIN PurchaseOrder ON PurchaseOrder.PurchaseOrderID = PurchaseOrderDetailInfo.PurchaseOrderID
+                        							        LEFT OUTER JOIN GroupEx AS CostCenter ON PurchaseOrderDetailInfo.PODetailCostCenterID = CostCenter.GroupExID
+                        							        -- Link from PurchaseOrderDetail to Assets via AssetPurchaseOrder table
+                        							        	LEFT OUTER JOIN (
+                        							        			SELECT  AssetPurchaseOrder.PurchaseOrderDetailID,
+                        							        					Asset.*
+                        							        			FROM    AssetPurchaseOrder
+                        							        					INNER JOIN (
+                        							        							-- Custom view query for assets
+                        							        								SELECT  Asset.AssetID AS [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetID],
+                        							        							        Asset.ShortDescription AS [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_ShortDescription],
+                        							        							        AssetStatusI18N.StatusDefaultValue AS [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetStatus],
+                        							        							        AssetTypeI18N.AssetTypeName AS [R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetType],
+                        							        							        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerID],
+                        							        							        [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerName],
+                        							        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID],
+                        							        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName]
+                        							        								FROM    Asset
+                        							        										-- Filter
+                        							        										INNER JOIN #AssetAllowed AS filter ON filter.AssetID = Asset.AssetID
+                        							        										-- Additional joins
+                        							        										LEFT OUTER JOIN AssetStatusI18N ON AssetStatusI18N.AssetStatusID = Asset.AssetStatusID
+                        							        							        LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID
+                        							        							        -- Link from Asset to Computer
+                        							        							        	LEFT OUTER JOIN (
+                        							        							        			SELECT  Main.*,
+                        							        							        					Extended.AssetID AS R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComplianceComputerLinkID
+                        							        							        			FROM    (
+                        							        							        							-- Custom view query for computers
+                        							        							        								SELECT  ComplianceComputer.ComplianceComputerID AS [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerID],
+                        							        							        							        ComplianceComputer.ComputerName AS [R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerName],
+                        							        							        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID],
+                        							        							        							        [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName]
+                        							        							        								FROM    ComplianceComputer
+                        							        							        										-- Filter
+                        							        							        										INNER JOIN #ComplianceComputerAllowed AS filter ON filter.ComplianceComputerID = ComplianceComputer.ComplianceComputerID
+                        							        							        										-- Additional joins
+                        							        							        										-- Link from Computer to Calculated User
+                        							        							        							        	LEFT OUTER JOIN (
+                        							        							        							        			-- Custom view query for users
+                        							        							        							        				SELECT  ComplianceUser.ComplianceUserID AS [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID],
+                        							        							        							        			        ComplianceUser.UserName AS [R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName]
+                        							        							        							        				FROM    ComplianceUser
+                        							        							        							        						-- Filter
+                        							        							        							        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        							        							        							        						-- Additional joins
+                        							        							        							        	) AS ComputerToCalculatedUser ON ComputerToCalculatedUser.R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserID = ComplianceComputer.CalculatedUserID
+                        							        							        					) AS Main
+                        							        							        					INNER JOIN ComplianceComputer AS Extended ON Extended.ComplianceComputerID = Main.R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerID
+                        							        							        	) AS AssetToComputer ON AssetToComputer.R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComplianceComputerLinkID = Asset.AssetID
+                        							        					) AS Asset ON Asset.R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetID = AssetPurchaseOrder.AssetID
+                        							        	) AS PurchaseOrderDetailToAsset ON PurchaseOrderDetailToAsset.PurchaseOrderDetailID = PurchaseOrderDetailInfo.PurchaseOrderDetailID
+                        					) AS PurchaseOrderDetailInfo ON PurchaseOrderDetailInfo.R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderLineID = EntitlementTransactionAccepted.PurchaseOrderDetailID
+                        	) AS LicenseToPurchaseOrderDetail ON LicenseToPurchaseOrderDetail.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_Description] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CorporateStructure] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_EffectiveQuantity] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_CostCenter] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_93687388af762d11de1a115e80ff39d3_LicenseToPurchaseOrderDetail_PurchaseOrderDate] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_ShortDescription] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R3_baffe6ca2416dc3fcc2f90967001783e_PurchaseOrderDetailToAsset_AssetStatus] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R4_7ccc12eedcbb6859a6d26f75ac560228_AssetToComputer_ComputerName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R5_e52f6f5efc6dac44cd45d6a1de8a84eb_ComputerToCalculatedUser_UserName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomViewTypes>
+  <CustomViewType Exclude=""> <!-- Set Exclude to "TRUE" to stop this report from being imported -->
+    <TypeName>Name of your custom view object type</TypeName>
+    <Description>Description of this object type</Description>
+    <QueryName>SQL view name to save query</QueryName>    
+    <QuerySQL>
+      <![CDATA[
+        -- The base query for this view type
+        SELECT item1, item2, ...
+        FROM dbo.table AS t
+        WHERE t.item1 = 1
+      ]]>
+    </QuerySQL>
+    <QueryFilter>
+      <![CDATA[
+        -- Pre-calculate query records that match filter  
+        CREATE TABLE #{NAMESPACE}SqlViewNameFilter (item1 nvarchar(512), item2 nvarchar(256))  
+        INSERT #{NAMESPACE}SqlViewNameFilter
+        SELECT DISTINCT SqlViewName.item1, sqlviewname.item2
+        FROM dbo.SqlViewName
+          {QUERYFROM}  
+        WHERE
+          {QUERYWHERE}
+      ]]>
+    </QueryFilter>          
+    <QueryTemplate>
+      <![CDATA[
+        -- Custom view query
+        SELECT {QUERYSELECT}
+        FROM dbo.SqlViewName
+        -- Filter          
+        INNER JOIN #{NAMESPACE}SqlViewNameFilter 
+        AS filter ON filter.item1 = SqlViewName.item1 and filter.item2 = SqlViewName.item2
+        -- Additional joins          
+         {QUERYFROM}
+        WHERE
+         {QUERYWHERE}
+      ]]>
+    </QueryTemplate>          
+    <SearchTypeColumns>
+      <![CDATA[
+        SET @searchid = @searchid+1
+        EXEC ComplianceCustomViewColumnRegister @ComplianceSearchTypeColumnID = @searchid,
+          @ColumnName = 'Item1 Name',
+          @ColumnNameResourceName = NULL,
+          @SelectName = 'SqlViewName.item1',
+          @WhereClause = 'SqlViewName.item1',
+          @FilterGroupType = 1,
+          @DefaultFilterType = 1,
+          @ComplianceSearchTypeID = @searchtypeid,
+          @SelectByDefault = 1
+
+          ... more colums
+      ]]>
+    </SearchTypeColumns>          
+  </CustomViewType>
+</CustomViewTypes>

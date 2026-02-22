@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="176" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportDocumentMap</SearchName>
+    <Description>Export FNMS Linked Document Map.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT 
+         [DocumentID]
+          ,[DocumentTypeID]
+          ,[DocumentTypeDefaultValue]
+          ,[DocumentName]
+          ,[DocumentPath]
+          ,[DocumentDescription]
+          ,[PhysicalLocation]
+          ,[DocumentSize]
+          ,[AssetID]
+          ,[PurchaseOrderID]
+          ,[PurchaseOrderDetailID]
+          ,[ContractID]
+          ,[ContractNo]
+          ,[ContractStatusID]
+          ,[SoftwareLicenseID]
+          ,[ComplianceUserID]
+          ,[ContractNoteID]
+          ,[DocumentNoteID]
+          ,[AttachDate]
+          ,[UserName]
+          ,[ContentType]
+       FROM [dbo].[DocumentInfo]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

@@ -1,0 +1,121 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+		<Import 
+			Type="SqlServer" 
+			Name="AssetBusinessRules" 
+			Template="" 
+			Enabled="False" 
+			ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=FNMSCompliance_PROD;Data Source=ITS-DS-SQLAG02.compute.dc.uq.edu.au;MultiSubnetFailover=true" 
+			Query="
+							SELECT
+					a.AssetID,
+					a.ShortDescription,
+					aon.AssetOffNetwork,
+					ast.StatusDefaultValue AS OldAccessStatus,
+					'Retired' AS NewAssetStatus,
+					a.DisposalDate,
+					a.RetirementDate,
+					NULL AS InventoryDate
+				FROM Asset a
+					LEFT OUTER JOIN dbo.AssetStatusI18N ast
+						ON ast.AssetStatusID = a.AssetStatusID
+					LEFT OUTER JOIN (
+							SELECT 
+							apv.AssetID,
+							apv.PropertyValue AS AssetOffNetwork
+						FROM dbo.AssetPropertyValue apv
+							JOIN dbo.AssetTypeProperty atp
+								ON atp.AssetTypePropertyID = apv.AssetTypePropertyID
+						WHERE atp.PropertyName = 'CustomAssetOffNetwork'
+					) aon
+						ON aon.AssetID = a.AssetID
+				WHERE (
+						a.AssetID IN (
+							SELECT AssetID
+							FROM ComplianceComputer cc
+								JOIN ComplianceDomain cd
+									ON cd.ComplianceDomainID = cc.ComplianceDomainID
+							WHERE cc.ComplianceComputerStatusID = 4
+								AND cd.QualifiedName = 'uq.edu.au'
+						) 
+						OR
+						a.AssetID IN (
+							SELECT AssetID
+							FROM ComplianceComputer cc
+								JOIN ComplianceDomain cd
+									ON cd.ComplianceDomainID = cc.ComplianceDomainID
+							WHERE cc.ComplianceComputerStatusID != 4
+								AND
+								DATEDIFF(day, cc.InventoryDate, GETDATE()) > 365
+						)
+					)
+					AND a.AssetStatusID NOT IN (2,4,5) -- In Storage, Retired or Disposed
+					AND ISNULL(aon.AssetOffNetwork, '') != 'true'
+
+				UNION
+
+				SELECT 
+					a.AssetID,
+					a.ShortDescription,
+					aon.AssetOffNetwork,
+					ast.StatusDefaultValue AS OldAccessStatus,
+					'Installed' AS NewAssetStatus,
+					a.DisposalDate,
+					a.RetirementDate,
+					cc.InventoryDate
+				FROM dbo.Asset a
+					LEFT OUTER JOIN dbo.AssetStatusI18N ast
+						ON ast.AssetStatusID = a.AssetStatusID
+					LEFT OUTER JOIN (
+							SELECT 
+							apv.AssetID,
+							apv.PropertyValue AS AssetOffNetwork
+						FROM dbo.AssetPropertyValue apv
+							JOIN dbo.AssetTypeProperty atp
+								ON atp.AssetTypePropertyID = apv.AssetTypePropertyID
+						WHERE atp.PropertyName = 'CustomAssetOffNetwork'
+					) aon
+						ON aon.AssetID = a.AssetID
+					JOIN dbo.ComplianceComputer cc
+						ON cc.AssetID = a.AssetID
+				WHERE a.AssetStatusID IN (4,5) -- Retired or Disposed
+					AND
+					cc.ComplianceComputerStatusID IN (1,2) -- Active or Ignored
+					AND
+					DATEDIFF(day, cc.InventoryDate, GETDATE()) &lt; 7 -- Reported inventory in the last 7 days
+					AND 
+					(
+						(
+							a.AssetStatusID = 5 -- Disposed
+							AND
+							(
+								DATEDIFF(day, a.DisposalDate, cc.InventoryDate) > 0  -- The inventory has been reported since the asset was disposed
+								OR
+								a.DisposalDate IS NULL -- Ensure that we cover assets that were disposed prior to us adding the custom trigger to that automatically sets the disposal date
+							)
+						)
+						OR
+						(
+							a.AssetStatusID = 4 -- Retired
+							AND
+							(
+								DATEDIFF(day, a.RetirementDate, cc.InventoryDate) > 0  -- The inventory has been reported since the asset was retired
+								OR
+								a.RetirementDate IS NULL -- Ensure that we cover assets that were retired prior to us adding the custom trigger to that automatically sets the retirement date
+							)
+						)
+					)
+			">
+			
+			<Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[IMPORT NAME]_[DATE][TIME].log" />
+
+			<Object Type="Asset" Name="Asset" Update="True" Create="False" OutputField="Asset_ID">
+				<Property Type="assetid" Name="AssetID" Update="Do not blank" ValueType="Field Value" Value="AssetID" UseForMatching="True" />
+				<Property Type="shortdescription" Name="Asset Name" Update="Do not blank" ValueType="Field Value" Value="ShortDescription" Length="256" />
+				<Property Type="assetstatus" Name="Asset Status" Update="Do not blank" ValueType="Field Value" Value="NewAssetStatus" Length="100" />
+			</Object>
+		</Import>
+	</Imports>
+</root>

@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Websphere MQ file evidence</SearchName>
+    <Description>This report lists raw file evidence related to Websphere MQ installs.</Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        WITH DATA AS
+        (
+          SELECT 
+            iife.[ComplianceConnectionID]
+            ,iife.[ExternalID]
+            ,ic.[ComputerName]
+            ,ic.[OperatingSystem]
+            ,iife.[ExternalFileID]
+            ,ife.[FileName]
+            ,ife.[FileVersion]
+            ,iife.[ExternalFilePathID]
+            ,ife.[FilePath]
+            --,cifpe.[FilePath] AS [ActualFilePath]
+            ,recognition = CASE       
+               WHEN ife.[FilePath] like '%source%Websphere MQ%' THEN 'client'
+               WHEN ife.[FilePath] like '%Websphere MQ%bin%' THEN 'server'
+               ELSE 'undetermined'
+               END            
+            ,ife.[ProductVersion]
+            ,ife.[ProductName]
+            ,ife.[Company]
+            ,ife.[Description]
+            ,ife.[FileSize]
+          FROM dbo.ImportedInstalledFileEvidence AS iife
+            INNER JOIN dbo.ImportedFileEvidence AS ife ON ife.[ComplianceConnectionID] = iife.[ComplianceConnectionID] and ife.[ExternalFileID] = iife.[ExternalFileID]
+            --INNER JOIN dbo.CustomImportedFilePathEvidence AS cifpe ON iife.[ExternalFilePathID] = cifpe.[ExternalFilePathID]
+            INNER JOIN dbo.ImportedComputer AS ic ON ic.[ExternalID] = iife.[ExternalID]
+          WHERE ife.[FileName] like '%amqzlaa0%' or ife.[FileName] like '%amqzxma0%'
+        )
+        SELECT
+            d.[ComputerName],
+            d.[OperatingSystem],            
+            d.[FileName],
+            d.[FileVersion],
+            d.[ProductVersion],
+            d.[recognition],
+            d.[ProductName],
+            d.[FilePath],
+            d.[Company],
+            d.[Description],
+            d.[FileSize]
+        FROM
+          DATA d
+        ORDER BY 
+          d.ComputerName, d.[FileName]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       ComputerName,OperatingSystem,FileName,FileVersion,ProductVersion,recognition,ProductName,FilePath,Company,Description,FileSize
+    </SearchColumns>          
+  </Report>
+</CustomReports>

@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+
+	<!-- 
+		Report Definition Template
+		=================================
+		
+		OVERVIEW
+		========
+		This adapter is designed to import report definitions into FNMS.  There are two types of reports that can be configured:
+		
+		- Standard Report
+		This type of report is normally created by FNMS operators create using the report builder.   
+		This is stored in two parts:
+		  - Search XML: The definition of the report record types, relationships and filtering
+		  - Search Mapping: Information about how the report data is displayed
+		 		
+		When you run the report FNMS automatically generates the report SQL search query.
+		
+		- Custom SQL Report
+		These are reports where you manually author the SQL search query.  There is no Search XML or Mapping for this type of report.
+	
+		REPORT DEFINITION
+		=================
+		<Report 
+			ID="" 
+			SearchName="MyTestReport"   
+			ComplianceSearchTypeID="15" 
+			ComplianceSearchFolderID="" 
+			CreatedByOperatorID=""
+			RestrictedAccessTypeID="1"
+			CanDelete="Yes"
+		>
+			<Description>This is my test report</Description>
+			<FolderName>MyFolder/MySubFolder</FolderName>
+			<CreationDate>17/09/2019</CreationDate>
+			<SearchSQL></SearchSQL>
+			<SearchMapping></SearchMapping>
+			<SearchXML></SearchXML>
+		</Report>	  
+
+		REPORT ATTRIBUTES
+		=================
+		ID:	This is ignored.  It can be left blank.
+		SearchName: This is the name of the report to be created.   It should be no longer than 64 characters and is mandatory. 
+		ComplianceSearchTypeID:  
+			This must be set to the ID of the anchor (first) record type in the report.  
+			If this is a custom SQL report then set this to -1.
+			Valid record types:
+			1	Asset
+			2	License
+			3	Contract
+			4	Vendor
+			5	PurchaseOrder
+			6	SoftwareTitle
+			7	User
+			8	Computer
+			13	PurchaseOrderDetail
+			14	VirtualMachine
+			15	InstalledSoftware
+			16	SoftwareLicenseAllocation
+			17	PaymentSchedule
+			18	PaymentScheduleDetail
+			19	OracleInstance
+			20	OracleComponent
+			21	Suite
+			22	SuiteMember
+			23	TermAndCondition
+			24	ContractHistoryView
+			25	ContractDocumentView
+			26	DocumentNote
+			27	ComplianceResponsibility
+			28	ContractNote
+			29	Location
+			30	CostCenter
+			31	CorporateStructure
+			32	Category
+			33	VendorContact
+			34	Cluster
+		ComplianceSearchFolderID: This is ignored.  It can be left blank.
+		CreatedByOperatorID: This is ignored.  It can be left blank.
+		RestrictedAccessTypeID: Set to "1" if this report is to be Publicly accessible.  Set to "2" if it is only to be accessible by you
+		CanDelete: Set to "Yes" if this report can be deleted by end users in the FNMS portal.   Otherwise set to "No".
+		
+		REPORT ELEMENTS
+		===============
+		Description: Friendly description of the report. (Optional)
+		FolderName: Full path to the folder in which the report resides.   This folder will be created if it does not exist already. (Mandatory)
+		CreationDate: Explicitly set the date that the report is listed as created.  Use the form DD/MM/YYYY.  (Mandatory) 
+		SearchSQL:  The raw SQL query. (Mandatory if a custom SQL report. i.e. where ComplianceSearchTypeID = -1)
+		SearchMapping: The mapping of query columns to report columns (Only used for a standard report.  i.e. where ComplianceSearchTypeID != -1)
+		SearchXML: The definition of the report. (Only used for a standard report.   i.e. where ComplianceSearchTypeID != -1)
+
+	-->
+
+
+	<!-- 
+		SAMPLE STANDARD REPORT		
+	-->
+	<Report
+		ID=""
+		SearchName="My sample standard report"
+		ComplianceSearchTypeID="1"
+		ComplianceSearchFolderID=""
+		CreatedByOperatorID=""
+		RestrictedAccessTypeID="1"
+		CanDelete="Yes"
+	>
+		<Description>This is my sample standard report</Description>
+		<FolderName>MyFolder/MySubFolder</FolderName>
+		<CreationDate>17/09/2019</CreationDate>
+		<SearchSQL/>
+		<SearchMapping>
+			<![CDATA[
+			<ArrayOfCustomViewColumnMapping xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+				<CustomViewColumnMapping>
+					<Column ComplianceSearchTypeColumnID="1" ColumnName="Asset.AssetID" ColumnNameResourceName="ComplianceSearchTypeColumn.AssetID" SelectName="Asset.AssetID" WhereClause="Asset.AssetID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="1" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Assets" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="AssetType" ModifyState="Unchanged" />
+					<Index>-1</Index>
+					<FieldName>AssetID</FieldName>
+					<ShowInGrid>false</ShowInGrid>
+					<Hidden>true</Hidden>
+					<Order>-2147483648</Order>
+					<QueryDepth>1</QueryDepth>
+					<ParentName>Asset</ParentName>
+					<RelationName />
+					<RelationPath />
+					<MatchOption>Excluded</MatchOption>
+				</CustomViewColumnMapping>
+				<CustomViewColumnMapping>
+					<Column ComplianceSearchTypeColumnID="2" ColumnName="Asset.ShortDescription" ColumnNameResourceName="ComplianceSearchTypeColumn.ShortDescription" SelectName="Asset.ShortDescription" WhereClause="Asset.ShortDescription" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="1" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Assets" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+					<Index>0</Index>
+					<FieldName>ShortDescription</FieldName>
+					<ShowInGrid>true</ShowInGrid>
+					<Hidden>false</Hidden>
+					<Order>0</Order>
+					<QueryDepth>1</QueryDepth>
+					<ParentName>Asset</ParentName>
+					<RelationName />
+					<RelationPath />
+					<MatchOption>PartialMatch</MatchOption>
+				</CustomViewColumnMapping>
+				<CustomViewColumnMapping>
+					<Column ComplianceSearchTypeColumnID="7" ColumnName="Asset.AssetStatus" ColumnNameResourceName="ComplianceSearchTypeColumn.AssetStatus" FromTable="LEFT OUTER JOIN AssetStatusI18N ON AssetStatusI18N.AssetStatusID = Asset.AssetStatusID" SelectName="AssetStatusI18N.StatusDefaultValue" WhereClause="AssetStatusI18N.AssetStatusID" SelectOptionsSQL="SELECT DISTINCT AssetStatusID AS [ID], StatusResourceName AS ResourceName, StatusDefaultValue AS DefaultName from dbo.AssetStatusI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="1" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+					<Index>1</Index>
+					<FieldName>AssetStatus</FieldName>
+					<ShowInGrid>true</ShowInGrid>
+					<Hidden>false</Hidden>
+					<Order>2147483647</Order>
+					<QueryDepth>1</QueryDepth>
+					<ParentName>Asset</ParentName>
+					<RelationName />
+					<RelationPath />
+					<MatchOption>Excluded</MatchOption>
+				</CustomViewColumnMapping>
+				<CustomViewColumnMapping>
+					<Column ComplianceSearchTypeColumnID="4" ColumnName="Asset.AssetType" ColumnNameResourceName="ComplianceSearchTypeColumn.AssetType" FromTable="LEFT OUTER JOIN AssetTypeI18N ON AssetTypeI18N.AssetTypeID = Asset.AssetTypeID" SelectName="AssetTypeI18N.AssetTypeName" WhereClause="AssetTypeI18N.AssetTypeID" SelectOptionsSQL="SELECT DISTINCT AssetTypeID AS [ID], AssetTypeName AS ResourceName, AssetTypeName AS DefaultName from AssetTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="1" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+					<Index>-1</Index>
+					<FieldName>AssetType</FieldName>
+					<ShowInGrid>false</ShowInGrid>
+					<Hidden>true</Hidden>
+					<Order>2147483647</Order>
+					<QueryDepth>1</QueryDepth>
+					<ParentName>Asset</ParentName>
+					<RelationName />
+					<RelationPath />
+					<MatchOption>Excluded</MatchOption>
+				</CustomViewColumnMapping>
+			</ArrayOfCustomViewColumnMapping>
+			]]>
+		</SearchMapping>
+		<SearchXML>
+			<![CDATA[
+			<customview>
+				<!--Custom view properties-->
+				<name>Retired Assets</name>
+				<description />
+				<schemaVersion>2.0</schemaVersion>
+				<productVersion>12.4</productVersion>
+				<!--Master custom view object-->
+				<object name="Asset" major="true">
+					<column index="0" name="Asset.ShortDescription" show="true" match="PartialMatch" />
+					<column index="1" name="Asset.AssetStatus" show="true" match="Excluded" />
+					<!--Asset filter-->
+					<filter>
+						<condition column="Asset.AssetStatus" operation="Equals" value="4" />
+					</filter>
+				</object>
+			</customview>			
+			]]>
+		</SearchXML>
+	</Report>
+
+	<!-- 
+		SAMPLE SQL REPORT		
+	-->
+	<Report
+		ID=""
+		SearchName="My sample SQL report"
+		ComplianceSearchTypeID="-1"
+		ComplianceSearchFolderID=""
+		CreatedByOperatorID=""
+		RestrictedAccessTypeID="1"
+		CanDelete="Yes"
+	>
+		<Description>This is my sample SQL report</Description>
+		<FolderName>MyFolder/MySubFolder</FolderName>
+		<CreationDate>17/09/2019</CreationDate>
+		<SearchSQL>
+			<![CDATA[
+			SELECT a.ShortDescription, a.SerialNumber
+			FROM Asset a
+			]]>
+		</SearchSQL>
+		<SearchMapping/>
+		<SearchXML/>
+	</Report>
+
+
+</CustomReports>

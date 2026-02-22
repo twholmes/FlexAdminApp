@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="66" Exclude="" Action="add" FolderID="">
+    <SearchName>Applications, Computers and their Locations</SearchName>
+    <Description>unknown</Description>
+    <FolderName>License Compliance/MDE Team</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

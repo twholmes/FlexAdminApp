@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Custom Report Computer Inventory Age</SearchName>
+    <Description>This report shows Computer Inventory Ages.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[
+SELECT 
+  --cc.ComplianceComputerID
+  --,ic.ExternalID
+  cc.ComputerName
+  ,cc.SerialNo
+  --,cc.AssetID
+  --,a.AssetStatusID
+  ,ast.StatusDefaultValue as AssetStatus
+  --,cc.ComplianceComputerStatusID
+  ,ccs.DefaultValue AS [InventoryStatus]
+  ,cc.InventoryDate
+  ,DATEDIFF(day, cc.InventoryDate, getdate()) AS Age
+FROM ComplianceComputer as cc
+ LEFT OUTER JOIN ImportedComputer AS ic ON ic.ComplianceComputerID = cc.ComplianceComputerID
+ LEFT OUTER JOIN ComplianceComputerStatus AS ccs ON ccs.ComplianceComputerStatusID = cc.ComplianceComputerStatusID
+ LEFT OUTER JOIN Asset AS a ON a.AssetID = cc.AssetID
+ LEFT OUTER JOIN AssetStatus AS ast ON a.AssetStatusID = ast.AssetStatusID
+WHERE 
+  	DATEDIFF(day, cc.InventoryDate, getdate()) >= 30
+	and cc.ComplianceComputerStatusID <> 4
+ORDER BY cc.InventoryDate
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+       ComputerName,SerialNo,AssetStatus,InventoryStatus,InventoryDate,Age
+    </SearchColumns>          
+  </Report>
+</CustomReports>

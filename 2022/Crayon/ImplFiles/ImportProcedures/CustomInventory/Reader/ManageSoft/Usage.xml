@@ -1,0 +1,192 @@
+<Readers>
+	<!-- 
+		This version of the ImportIntoTempImportedFileEvidenceUsage reader improves the query performance
+		through better indexing.
+		
+		It drops the time take to complete from around 4 hours to an hour.
+	.-->
+	<Reader xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			xsi:type="SourceToTarget"
+			Name="ImportIntoTempImportedFileEvidenceUsage"
+			Order="740"
+			Retries="1"
+			VersionFrom="8.4"
+			Table="#ImportedFileEvidenceUsage">
+			<![CDATA[
+		DECLARE	@OldestRelevantAppUsagePeriodDate datetime
+				
+		SELECT	TOP 1
+				@OldestRelevantAppUsagePeriodDate = OldestRelevantAppUsagePeriodDate
+		FROM	#OldestAppUsagePeriod
+							
+		SET		@OldestRelevantAppUsagePeriodDate = ISNULL(@OldestRelevantAppUsagePeriodDate, 0)
+
+		IF (OBJECT_ID('tempdb..#CleanSoftwareFileUsage') IS NOT NULL)
+			DROP TABLE #CleanSoftwareFileUsage
+				
+		-- Pre clean data into temp table to improve performance
+		CREATE TABLE #CleanSoftwareFileUsage (
+			SoftwareFileUsageID	INT,
+			ComputerID			INT,
+			UserID				INT,
+			FileName			NVARCHAR(256) 	COLLATE DATABASE_DEFAULT NULL,
+			FileVersion			NVARCHAR(32)	COLLATE DATABASE_DEFAULT,
+			CompanyName			NVARCHAR(50)	COLLATE DATABASE_DEFAULT,
+			Description			NVARCHAR(200)	COLLATE DATABASE_DEFAULT,
+			SoftwareFileNameID	INT NULL
+		)
+				
+		INSERT INTO #CleanSoftwareFileUsage (
+			SoftwareFileUsageID,
+			ComputerID,
+			UserID,
+			FileName,
+			FileVersion,
+			CompanyName,
+			Description,
+			SoftwareFileNameID
+		)
+		SELECT
+			sfu.SoftwareFileUsageID,
+			sfu.ComputerID,
+			sfu.UserID,
+			CASE 
+				WHEN LEFT(SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfu.Longname, '%', '_'), ''))), 1, 256), 1) = '/' THEN
+					SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfu.Longname, '%', '_'), ''))), 1, 256) 
+				ELSE
+					SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfn.Name, '%', '_'), ''))), 1, 256)
+			END AS [FileName],
+			SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfu.Version, '%', '_'), ''))), 1, 100) AS FileVersion,
+			SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfu.CompanyName, '%', '_'), ''))), 1, 100) AS CompanyName,
+			SUBSTRING(RTRIM(LTRIM(ISNULL(REPLACE(sfu.Description, '%', '_'), ''))), 1, 200) AS Description,
+			sfu.SoftwareFileNameID
+		FROM dbo.SoftwareFileUsage AS sfu
+		JOIN dbo.SoftwareFileName AS sfn 
+			ON sfn.SoftwareFileNameID = sfu.SoftwareFileNameID
+		-- 14 minutes	
+
+		CREATE INDEX PK_#CleanSoftwareFileUsage ON #CleanSoftwareFileUsage(SoftwareFileUsageID)
+		CREATE INDEX IX_#CleanSoftwareFileUsage_CompanyName ON #CleanSoftwareFileUsage(CompanyName)
+		CREATE INDEX IX_#CleanSoftwareFileUsage_Description ON #CleanSoftwareFileUsage(Description)
+		-- 4 minutes
+
+
+		IF (OBJECT_ID('tempdb..#SoftwareFileUsagePath') IS NOT NULL)
+			DROP TABLE #SoftwareFileUsagePath
+
+		CREATE TABLE #SoftwareFileUsagePath (
+			SoftwareFileUsageID	INT,
+			SoftwareFilePath	NVARCHAR(256)  
+		)
+
+		INSERT	
+		INTO #SoftwareFileUsagePath
+		SELECT
+			sfu.SoftwareFileUsageID,
+			LEFT(sfu.FileName, LEN(sfu.FileName) - LEN(sfn.Name)) AS SoftwareFilePath
+		FROM #CleanSoftwareFileUsage AS sfu
+			JOIN dbo.SoftwareFileName AS sfn 
+				ON sfn.SoftwareFileNameID = sfu.SoftwareFileNameID
+
+		CREATE INDEX PK_#IndexedSoftwareFileUsagePath ON #SoftwareFileUsagePath(SoftwareFileUsageID)
+		CREATE INDEX IX_#IndexedSoftwareFileUsagePath_SoftwareFilePath ON #SoftwareFileUsagePath(SoftwareFilePath)
+
+		-- 7 minutes	
+
+
+		SELECT
+			sfu.SoftwareFileUsageID,
+			sfu.ComputerID,
+			sfu.UserID,
+			sfu.FileName,
+			sfu.FileVersion,
+			sfu.SoftwareFileNameID,
+			FileDescriptionID = rfd.FileDescriptionID,
+			CompanyNameID = rcn.CompanyNameID,
+			SoftwareFilePathID = sfp.SoftwareFilePathID
+		INTO #CleanSoftwareFileUsageMerged
+		FROM #CleanSoftwareFileUsage AS sfu
+			JOIN #SoftwareFileUsagePath AS sfup
+				ON sfup.SoftwareFileUsageID = sfu.SoftwareFileUsageID
+			LEFT OUTER JOIN #RelevantCompanyName AS rcn
+				ON rcn.CompanyName = sfu.CompanyName
+			LEFT OUTER JOIN #RelevantFileDescription AS rfd
+				ON rfd.FileDescription = sfu.Description
+			LEFT OUTER JOIN SoftwareFilePath sfp
+				ON sfp.Path = sfup.SoftwareFilePath
+
+		DROP TABLE #CleanSoftwareFileUsage
+		DROP TABLE #SoftwareFileUsagePath
+
+		-- 3 minutes
+
+		CREATE INDEX PK_#CleanSoftwareFileUsageMerged ON #CleanSoftwareFileUsageMerged(SoftwareFileUsageID)
+		CREATE INDEX IX_#CleanSoftwareFileUsageMerged_FileDescriptionID ON #CleanSoftwareFileUsageMerged(FileDescriptionID)
+		CREATE INDEX IX_#CleanSoftwareFileUsageMerged_CompanyNameID ON #CleanSoftwareFileUsageMerged(CompanyNameID)
+		CREATE INDEX IX_#CleanSoftwareFileUsageMerged_SoftwareFilePathID ON #CleanSoftwareFileUsageMerged(SoftwareFilePathID)
+		CREATE INDEX IX_#CleanSoftwareFileUsageMerged_ComputerID ON #CleanSoftwareFileUsageMerged(ComputerID)
+		CREATE INDEX IX_#CleanSoftwareFileUsageMerged_SoftwareFileNameID ON #CleanSoftwareFileUsageMerged(SoftwareFileNameID)
+
+		-- 16 minutes
+
+		SELECT
+			su.ComputerID,
+			su.UserID,
+			su.StartOfWeek,
+			sfu.FileName,
+			sfu.FileVersion,
+			sfu.CompanyNameID,
+			sfu.FileDescriptionID,
+			sf.Size,
+			sum(convert(bigint, case ISNUMERIC(su.ActiveTime) when 1 then su.ActiveTime else '0' end)) AS ActiveTimeInSeconds,
+			sum(convert(bigint, case ISNUMERIC(su.Sessions) when 1 then su.Sessions else '0' end)) AS NumberOfSessions
+		INTO #Usage
+			FROM dbo.SoftwareUsagePerWeek AS su
+			INNER JOIN #CleanSoftwareFileUsageMerged AS sfu
+				ON sfu.SoftwareFileUsageID = su.SoftwareFileUsageID
+			LEFT JOIN dbo.SoftwareFile AS sf
+				ON sf.SoftwareFilePathID = sfu.SoftwareFilePathID
+				AND sf.ComputerID = sfu.ComputerID
+				AND sf.SoftwareFileNameID = sfu.SoftwareFileNameID
+			WHERE
+		--	su.StartOfWeek > @OldestRelevantAppUsagePeriodDate
+		su.StartOfWeek > '2017-11-26 09:42:45.240'
+		--	AND EXISTS (SELECT 'x' FROM #RelevantComputer WHERE ExternalID = su.ComputerID)
+		GROUP BY 
+			su.ComputerID,
+			su.UserID,
+			su.StartOfWeek,
+			sfu.FileName,
+			sfu.FileVersion,
+			sfu.CompanyNameID,
+			sfu.FileDescriptionID,
+			sf.Size
+		-- 25 minutes
+
+		DROP TABLE #CleanSoftwareFileUsageMerged
+
+		CREATE INDEX IX_#Usage ON #Usage(FileName, FileVersion, CompanyNameID, FileDescriptionID)
+
+		-- 2 minutes
+
+
+		SELECT
+			usage.ComputerID,
+			usage.UserID,
+			usage.StartOfWeek,
+			rsfn.TempID,
+			usage.ActiveTimeInSeconds,
+			usage.NumberOfSessions
+		FROM #Usage usage
+			INNER JOIN #RelevantSoftwareFile AS rsfn
+				ON rsfn.FileName = usage.FileName
+				AND rsfn.FileVersion = usage.FileVersion
+				AND rsfn.CompanyNameID = usage.CompanyNameID
+				AND rsfn.FileDescriptionID = usage.FileDescriptionID
+				AND ISNULL(rsfn.FileSize, -1) = ISNULL(usage.Size, -1)
+
+		-- ??? minutes
+
+			]]>
+	</Reader>
+</Readers>

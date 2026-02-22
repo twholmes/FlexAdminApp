@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="SqlServer" Name="AgedInventory" Template="" Enabled="False" 
+	ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=FNMSCompliance_PROD;Data Source=ITS-DS-SQLAG02.compute.dc.uq.edu.au;MultiSubnetFailover=true" 
+	Query="
+SELECT 
+  cc.ComplianceComputerID
+  ,ic.ExternalID
+  ,cc.ComputerName
+  ,cc.SerialNo
+  ,cc.AssetID
+  ,a.AssetStatusID
+  ,ast.StatusDefaultValue as AssetStatus
+  ,cc.ComplianceComputerStatusID
+  ,ccs.DefaultValue AS [InventoryStatus]
+  ,cc.InventoryDate
+  ,DATEDIFF(day, cc.InventoryDate, getdate()) AS Age
+FROM ComplianceComputer as cc
+ LEFT OUTER JOIN ImportedComputer AS ic ON ic.ComplianceComputerID = cc.ComplianceComputerID
+ LEFT OUTER JOIN ComplianceComputerStatus AS ccs ON ccs.ComplianceComputerStatusID = cc.ComplianceComputerStatusID
+ LEFT OUTER JOIN Asset AS a ON a.AssetID = cc.AssetID
+ LEFT OUTER JOIN AssetStatus AS ast ON a.AssetStatusID = ast.AssetStatusID
+WHERE 
+  	DATEDIFF(day, cc.InventoryDate, getdate()) >= 180
+	and cc.ComplianceComputerStatusID != 4
+	AND cc.AssetID IS NULL
+ORDER BY cc.InventoryDate
+	" 
+	UsePhysicalTable="True" 
+	>
+
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[DATE][TIME][IMPORT NAME].Log.txt" />
+	  
+      <Object Type="Computer" Name="Computer" Update="True" Create="True" OutputField="Computer_ID">
+        <Property Type="computername" Name="Computer Name" Update="Never" ValueType="Field Value" Value="ComputerName" UseForMatching="True" Length="256" />
+        <Property Type="compliancecomputerstatus" Name="Status" Update="Do not blank" ValueType="Fixed Value" Value="Ignored" Length="1000" />
+        <Property Type="serialno" Name="Serial Number" Update="Never" ValueType="Field Value" Value="SerialNo" UseForMatching="True" Length="100" />
+      </Object>
+	  
+    </Import>	
+  </Imports>
+</root>

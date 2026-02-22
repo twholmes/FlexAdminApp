@@ -1,0 +1,206 @@
+﻿<Readers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateTargetTempUserTables" 
+			Order="300" 
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('TempDB..#AVApplicationAssignment') IS NOT NULL
+				DROP TABLE #AVApplicationAssignment
+							
+			CREATE TABLE #AVApplicationAssignment
+			(
+				AppProductID	INT,
+				ObjectGUID		UNIQUEIDENTIFIER,
+				ObjectType		NVARCHAR(32) COLLATE database_default
+			)
+
+			IF OBJECT_ID('TempDB..#User') IS NOT NULL
+				DROP TABLE #User
+							
+			CREATE TABLE #User
+			(
+				ExternalUserID	INT,
+				SAMAccountName	NVARCHAR(64) COLLATE database_default,
+				DomainName		NVARCHAR(100) COLLATE database_default,	
+				UserName		NVARCHAR(64) COLLATE database_default
+			)
+						
+		]]>
+	</Reader>
+
+    <Reader 
+			xsi:type="SourceToTarget"
+			Name="GetPackageAssignments"
+			Order="310"
+			Retries="1"
+			Table="#AVApplicationAssignment">
+		<![CDATA[
+			SELECT 
+				ass.app_product_id,
+				CONVERT(UNIQUEIDENTIFIER, CONVERT(BINARY(16), REPLACE(grp.object_guid,'-',''), 2)), 
+				target_type
+			FROM dbo.app_assignments ass
+				JOIN dbo.app_assignment_entities asse
+					ON asse.app_assignment_id = ass.id
+						AND 
+						target_type = 'Group'
+				JOIN dbo.groups grp
+					ON grp.id = asse.target_id
+
+			UNION
+
+			SELECT 
+				ass.app_product_id,
+				target_type,
+				usr.object_guid
+			FROM dbo.app_assignments ass
+				JOIN dbo.app_assignment_entities asse
+					ON asse.app_assignment_id = ass.id
+						AND 
+						target_type = 'User'
+				JOIN dbo.users usr
+					ON usr.id = asse.target_id
+
+
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateIndexesOnAVPackageAssignment" 
+			Order="320" 
+			Retries="1">
+		<![CDATA[
+			CREATE INDEX IX_#AVApplicationAssignment_AppProductID ON #AVApplicationAssignment(AppProductID)
+			CREATE INDEX IX_#AVApplicationAssignment_ObjectGUID ON #AVApplicationAssignment(ObjectGUID)			
+		]]>
+	</Reader>
+
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="GetUsers" 
+			Order="330" 
+			Retries="1">
+		<![CDATA[
+
+			INSERT INTO #User (
+				ExternalUserID,
+				SAMAccountName,
+				DomainName,
+				UserName
+			)
+			SELECT TOP 1 WITH TIES
+				adu.ActiveDirectoryUserID,
+				adu.SAMAccountName,
+				ad.QualifiedName,
+				LEFT(cu.UserName,64) AS UserName
+			FROM
+				dbo.ActiveDirectoryUser adu
+				JOIN dbo.ActiveDirectoryDomain ad
+					ON ad.ActiveDirectoryDomainID = adu.ActiveDirectoryDomainID
+				JOIN dbo.ComplianceDomain cd
+					ON cd.QualifiedName = ad.QualifiedName
+				JOIN dbo.ComplianceUser cu
+					ON 
+						cu.SAMAccountName = adu.SAMAccountName
+						AND 
+						cu.ComplianceDomainID = cd.ComplianceDomainID
+			WHERE EXISTS ( -- The package assignment is to a group and the user is a member of it
+					SELECT 1
+					FROM #AVApplicationAssignment avpa
+						INNER JOIN dbo.ActiveDirectoryChildObjects adco
+							ON adco.RootGroupGUID = avpa.ObjectGUID
+					WHERE 
+						avpa.ObjectType = 'group'
+						AND adco.ChildObjectGUID = adu.GUID
+				)
+				OR EXISTS ( -- The package assignment is made directly to the user
+					SELECT 1
+					FROM #AVApplicationAssignment avpa
+					WHERE 
+						avpa.ObjectType = 'user'
+						AND avpa.ObjectGUID = adu.GUID
+				)
+			ORDER BY ROW_NUMBER() OVER (PARTITION BY adu.ActiveDirectoryUserID ORDER BY cu.ComplianceUserID)
+
+			PRINT N'Found ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' AD users that are members of Active Directory application assignment groups and exist as users in FNMS'
+
+			CREATE INDEX IX_#User_ExternalUserID ON #User(ExternalUserID)
+			CREATE INDEX IX_#User_SAMAccountName_DomainName ON #User(SAMAccountName, DomainName)
+
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="PersistUsers" 
+			Order="340" 
+			Retries="1">
+		<![CDATA[
+
+			DELETE iu
+			FROM dbo.ImportedUser AS iu
+			WHERE
+				iu.ComplianceConnectionID = @ComplianceConnectionID
+				AND NOT EXISTS (
+					SELECT 'x'
+					FROM #User AS adaau
+					WHERE
+						iu.ExternalID = adaau.ExternalUserID
+				)
+			
+			PRINT N'Removed ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' obsolete AD assigned user records'
+			
+			UPDATE iu
+			SET
+				iu.UserName = adaau.UserName,
+				iu.SAMAccountName = adaau.SAMAccountName,
+				iu.[Domain] = adaau.DomainName
+			FROM dbo.ImportedUser AS iu
+				JOIN #User AS adaau
+					ON iu.ExternalID = adaau.ExternalUserID
+			WHERE
+				iu.ComplianceConnectionID = @ComplianceConnectionID
+			
+			PRINT N'Updated ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' user records'
+
+			INSERT INTO dbo.ImportedUser (
+				ComplianceConnectionID,
+				ExternalID,
+				UserName,
+				SAMAccountName,
+				[Domain]
+			)
+			SELECT
+				@ComplianceConnectionID,
+				adaau.ExternalUserID AS ExternalID,
+				adaau.UserName,
+				adaau.SAMAccountName,
+				adaau.DomainName AS Domain
+			FROM #User AS adaau
+			WHERE 
+				NOT EXISTS (
+					SELECT 'x'
+					FROM dbo.ImportedUser AS iu
+					WHERE
+						iu.ComplianceConnectionID = @ComplianceConnectionID
+						AND iu.ExternalID = adaau.ExternalUserID
+				)
+			
+			PRINT N'Added ' + CONVERT(NVARCHAR(1000), @@ROWCOUNT) + N' new user records'
+
+		]]>
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget"
+			Name="RemoveTargetTempUserTables"
+			Order="390"
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('TempDB..#User') IS NOT NULL
+				DROP TABLE #User
+
+			-- Don't remove the #AVApplicationAssignment table as it is needed in the InstallerEvidence procedure
+		]]>
+	</Reader>	
+</Readers>

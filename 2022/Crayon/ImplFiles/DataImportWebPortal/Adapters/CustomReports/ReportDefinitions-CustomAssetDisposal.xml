@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Custom Report Asset Disposal</SearchName>
+    <Description>This report shows UQ Custom Asset Disposal records.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+SELECT 
+    a.AssetID
+	,a.ShortDescription as AssetName
+	,a.AssetTag
+    ,a.AssetStatusID -- = 5 -- Disposed
+	,a.DisposalDate
+	,a.UpdatedUser
+	,a.UpdatedDate
+	--,GETDATE() as NewDisposalDate
+	--,SYSTEM_USER + ' (Auto-disposal behaviour)' as NewUpdatedUser
+	--,GETDATE() as NewUpdatedDate
+FROM
+	dbo.Asset a
+	JOIN dbo.AssetType at ON at.AssetTypeID = a.AssetTypeID
+	JOIN dbo.ComplianceComputer cc
+		ON cc.AssetID = a.AssetID -- Only dispose "managed" asset types (that have a ComplianceComputer record)
+		AND cc.ComplianceComputerStatusID = 4 -- where computer is a "dummy" (missing inventory) record
+	LEFT OUTER JOIN (
+		dbo.AssetTypeProperty atp
+		JOIN dbo.AssetPropertyValue apv ON apv.AssetTypePropertyID = atp.AssetTypePropertyID
+	) ON apv.AssetID = a.AssetID AND atp.PropertyName = 'CustomAssetOffNetwork'
+WHERE
+	ISNULL(apv.PropertyValue, '') != 'true' -- Asset is not explicitly marked as "Off Network"
+	--AND a.AssetStatusID != 5 -- Disposed	  
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+       AssetID,AssetName,AssetTag,AssetStatusID,DisposalDate,UpdatedUser,UpdatedDate
+    </SearchColumns>          
+  </Report>
+</CustomReports>

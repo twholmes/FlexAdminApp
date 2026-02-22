@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="72" Exclude="" Action="add" FolderID="">
+    <SearchName>LaptopsSetAsWorkstationsView</SearchName>
+    <Description>unknown</Description>
+    <FolderName>Hardware Assets/Assets</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="GroupChangeProposals" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\Crayon\ImplFiles\DataImportWebPortal\Adapters\UQGroupChangeProposals\UQCorpUnitChanges.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+      Query="select * from [Changes$]"      
+      CleanUpControlCharOn="" 
+      UsePhysicalTable="True"
+      DataTableName="ECMImport_GroupChangeProposals" 
+      >
+
+    </Import>
+  </Imports>
+</root>

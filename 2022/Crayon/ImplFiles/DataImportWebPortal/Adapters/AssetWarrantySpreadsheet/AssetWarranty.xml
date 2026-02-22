@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>		
+    <Import Type="Excel" Name="AssetWarranty" Template="" Enabled="False" 	
+	  ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-AssetWarrantySpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+    Query="select * from [Assets$]" TraceActions="created,deleted,updated,rejected" TraceFields="('Serial number ' + [SerialNo])" 
+	  UsePhysicalTable="False"    	
+    datatablename="#AssetWarranty"
+    >
+		
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="C:\FNMS\LogFiles\[DATE][TIME][IMPORT NAME].Log.txt" />
+	  
+      <Object Type="Asset" Name="Asset" Update="True" Create="False" OutputField="Asset_ID">
+        <Property Type="serialnumber" Name="Serial Number" Update="Do not blank" ValueType="Field Value" Value="SerialNo" UseForMatching="True" Length="150" />
+        <Property Type="warrantyexpirationdate" Name="Warranty End Date" Update="Do not blank" ValueType="Field Value" Value="WarrantyDate" DataType="Date" />
+        <Property Type="customassetuqwarrentytype" Name="UQ Warranty Type:" Update="Do not blank" ValueType="Field Value" Value="Term" Length="512" IsCustomField="True" />        
+      </Object>
+	  
+    </Import>	
+  </Imports>
+</root>

@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="Categories" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=Categories-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'"
+    	Query="select * from [Categories$]"
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="Name" 
+      CleanUpControlCharOn=""
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_Categories"      
+      >
+
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+      
+      <Object Type="Category" Name="Category" Update="True" Create="True" UpdateRule="RejectDuplicateRecords" OutputField="Category_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Path" UseForMatching="True" Length="128" RegexSplit="/" />
+        <Property Type="comments" Name="Description" Update="Do not blank" ValueType="Field Value" Value="Description" />
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

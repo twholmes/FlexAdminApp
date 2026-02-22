@@ -1,0 +1,225 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+		<Import 
+			Type="XML" 
+			Name="ViewDefinitionImport" 
+			Template="" 
+			Enabled="False" 
+			ConnectionString="ViewDefinitionImport.xml"
+			TraceActions="created,deleted,updated,rejected" 
+			TraceFields="(ISNULL([SearchName], '&lt;NULL&gt;') + '/' + ISNULL([ComplianceSearchFolderID], '&lt;NULL&gt;'))" 
+			CleanUpControlCharOn="" 
+			UsePhysicalTable="True"
+			DataTableName="dbo.ECMImport_ViewDefinitionImport" 
+		>
+
+		<Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+      
+		<Object Type="Custom" Name="Add Columns" Query="
+			ALTER TABLE dbo.[ECMImport_ViewDefinitionImport] ADD [CanDeleteBit] bit
+			
+			IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ViewDefinitionImport' AND column_name = 'ViewName')
+			ALTER TABLE dbo.[ECMImport_ViewDefinitionImport] ADD [ViewName] nvarchar(40)
+		"/>
+      
+		<!--
+			Initialise View Definitions
+		-->      
+		<Object Type="Custom" Name="Initialise View Definitions" Query="                  	
+			UPDATE dbo.[ECMImport_ViewDefinitionImport]
+			SET 
+			[CanDeleteBit] = 0
+         
+			UPDATE dbo.[ECMImport_ViewDefinitionImport]
+			SET 
+			[CanDeleteBit] = 1
+			WHERE [CanDelete] = 'Yes'
+
+			UPDATE dbo.[ECMImport_ViewDefinitionImport]
+			SET [ViewName] = ISNULL([ViewName], 'CustomView' + REPLACE([SearchName], ' ', ''))
+
+		"/>
+
+		<!--
+			Remove any existing view definitions
+		-->      
+		<Object Type="Custom" Name="Remove existing view definitions" Query=" 			
+			DECLARE @vn nvarchar(100)
+		  SET @vn = (SELECT [ViewName] FROM dbo.[ECMImport_ViewDefinitionImport]) 
+						
+			DECLARE @sql nvarchar(1000)
+			SET @sql = 'IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ''' + @vn + ''' AND TABLE_SCHEMA = ''dbo'' AND TABLE_TYPE = ''VIEW'') DROP VIEW dbo.[' + @vn + ']'
+			EXEC sp_executesql @sql
+		"/>
+
+		<!--
+			Create view definition
+		-->      
+		<Object Type="Custom" Name="Create view definitions" Query=" 
+			DECLARE @SearchName nvarchar(100)
+			SET @SearchName = (SELECT [SearchName] FROM dbo.[ECMImport_ViewDefinitionImport])
+						
+			DECLARE @SearchSQL nvarchar(MAX)
+			SET @SearchSQL = (SELECT [SearchSQL] FROM dbo.[ECMImport_ViewDefinitionImport])
+
+			DECLARE @vn nvarchar(100)
+		  SET @vn = (SELECT [ViewName] FROM dbo.[ECMImport_ViewDefinitionImport]) 
+			
+			DECLARE @sql nvarchar(MAX)			
+			SET @sql = 'CREATE VIEW ' + @vn + ' AS ' + @SearchSQL	
+			EXEC sp_executesql @sql
+		"/>
+
+		<!--
+		Create Compliance Search Folders
+		-->     
+		<Object Type="Custom" Name="Create Search Folders" Query="        
+			INSERT INTO dbo.ECMImportLog_Object(ImportID, ObjectName, ObjectType, Processed, Status, StartDate) 
+			SELECT [LOG_IMPORT_ID], 'Create Search Folders', 'Custom', COUNT(*), 0, GETDATE()
+			FROM dbo.ECMImport_ViewDefinitionImport
+
+			DECLARE @ImportObjectID int
+			SET @ImportObjectID = (SELECT ImportObjectID FROM dbo.ECMImportLog_Object WHERE ImportID = [LOG_IMPORT_ID] and ObjectName = 'Create Search Folders')
+
+			DECLARE @RowNumber int = 0
+			DECLARE @SearchName NVARCHAR(128)           
+			DECLARE @FolderPath NVARCHAR(128)
+			DECLARE @ReportFolderID int = 0
+			DECLARE @count int = 0          
+
+			DECLARE SearchFolderCursor CURSOR FOR
+			SELECT ROWNUMBER, SearchName, FolderPath, ComplianceSearchFolderID 
+			FROM dbo.ECMImport_ViewDefinitionImport 
+			WHERE 
+				SearchName is not NULL 
+				and SearchName != '' 
+				and FolderPath is not NULL 
+				and FolderPath != ''
+
+			OPEN SearchFolderCursor
+
+			FETCH NEXT FROM SearchFolderCursor
+			INTO @RowNumber, @SearchName, @FolderPath, @ReportFolderID
+
+			WHILE @@FETCH_STATUS = 0
+			BEGIN
+				EXEC @ReportFolderID = dbo.CustomCreateComplianceSearchFolder @FolderPath
+				SET @count = @count + 1            
+
+				UPDATE dbo.ECMImport_ViewDefinitionImport
+				SET ComplianceSearchFolderID = @ReportFolderID
+				WHERE FolderPath like @FolderPath
+             
+				INSERT INTO dbo.ECMImportLog_Detail(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, MGSRecordKey, Message)
+				VALUES 
+				(
+					[LOG_IMPORT_ID], 
+					@ImportObjectID, 
+					@RowNumber, 
+					'Created', 
+					convert(varchar(255), @SearchName + ' => ' + @FolderPath), 
+					convert(nvarchar(40), @FolderPath), 
+					'Reports folder created'
+				)
+            
+				FETCH NEXT FROM SearchFolderCursor
+				INTO @RowNumber, @SearchName, @FolderPath, @ReportFolderID
+			END
+
+			CLOSE SearchFolderCursor
+			DEALLOCATE SearchFolderCursor  
+
+			/* Set log records so the Business Adapter Portal will report correct counts */
+			UPDATE dbo.ECMImportLog_Object
+			SET Status = 1,
+				EndDate = GETDATE(), 
+				Rejected = 0,
+				Updated = 0,
+				Created = @count,
+				Matched = @count
+			WHERE ImportID = [LOG_IMPORT_ID]
+			AND ObjectName = 'Create Search Folders'
+		"/>
+
+		<!--
+		Create Custom Reports
+		-->
+		<Object Name="Create Custom Reports" Type="Custom" Query="      
+			INSERT INTO dbo.[ECMImportLog_Object](ImportID, ObjectName, ObjectType, Processed, Status, StartDate) 
+			SELECT [LOG_IMPORT_ID], 'Create Custom Reports', 'Custom', COUNT(*), 0, GETDATE()
+			FROM dbo.ECMImport_ViewDefinitionImport
+
+			DECLARE @ImportObjectID int
+			SET @ImportObjectID = (SELECT ImportObjectID FROM dbo.ECMImportLog_Object WHERE ImportID = [LOG_IMPORT_ID] and ObjectName = 'Create Custom Reports')
+          
+			DECLARE @Actions TABLE(MergeAction VARCHAR(10), ROWNUMBER INT, SearchName NVARCHAR(512), FolderPath NVARCHAR(256))    
+     
+			MERGE dbo.ComplianceSavedSearch css
+			USING (
+			SELECT 
+				ecm.[ROWNUMBER]
+				,ecm.[SearchName]
+				,ecm.[Description]
+				,'SELECT * FROM ' + ecm.[ViewName]
+				,[SearchSQL]
+				,ISNULL(ecm.[SearchMapping],'&lt;ArrayOfCustomViewColumnMapping /&gt;') as [SearchMapping]
+				,ecm.[SearchXML]
+				,ecm.[ComplianceSearchFolderID]
+				,cst.[ComplianceSearchTypeID]
+				,ecm.[RestrictedAccessTypeID]
+				,ecm.[CanDeleteBit]
+				,ecm.[CreationDate]
+			FROM [dbo].[ECMImport_ViewDefinitionImport] AS ecm
+      JOIN [dbo].[ComplianceSearchType] AS cst ON cst.[TypeName] like ecm.[ComplianceSearchType]
+			WHERE [SearchName] != ''
+			) AS source(ROWNUMBER, SearchName,[Description],FolderPath,SearchSQL,SearchMapping,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,CreationDate)       
+			ON source.SearchName = css.SearchName and source.ComplianceSearchFolderID = css.ComplianceSearchFolderID
+
+			WHEN NOT MATCHED BY TARGET THEN     
+			INSERT (SearchName,[Description],SearchSQL,SearchMapping,SearchGridLayout,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,CreatedBy,CreationDate)
+			VALUES (SearchName,[Description],SearchSQL,SearchMapping,NULL,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,SYSTEM_USER,GETDATE())         
+
+			WHEN MATCHED THEN
+			UPDATE
+			SET css.SearchSQL = source.SearchSQL, 
+				css.SearchMapping = source.SearchMapping, 
+				css.SearchXML = source.SearchXML, 
+				css.SearchGridLayout = NULL,
+				css.ComplianceSearchFolderID = source.ComplianceSearchFolderID, 
+				css.ModifiedBy = SYSTEM_USER, 
+				css.ModificationDate = GETDATE()
+          
+			OUTPUT $action, source.ROWNUMBER, source.SearchName, source.FolderPath INTO @Actions
+			;
+
+			UPDATE dbo.BusinessImportLogObject_MT
+			SET Status = 1,
+				EndDate = GETDATE(), 
+				Rejected = 0,
+				Updated = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'UPDATE'),
+				Created = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'INSERT'),
+				Matched = (SELECT COUNT(*) FROM @Actions)
+			FROM @Actions
+			WHERE ImportID = [LOG_IMPORT_ID]
+			AND ObjectName = 'Create Custom Reports'
+            
+			INSERT INTO dbo.BusinessImportLogDetail_MT(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, Message, TenantID)
+			SELECT
+				[LOG_IMPORT_ID], 
+				@ImportObjectID, 
+				ROWNUMBER, 
+				CASE MergeAction 
+				WHEN 'INSERT' THEN 'Created'
+				WHEN 'UPDATE' THEN 'Updated'
+				END, 
+				convert(varchar(255), FolderPath + ' => ' + SearchName),
+				'Create Custom Reports',
+				1
+			FROM @Actions       
+
+		"/>   
+		</Import>
+	</Imports>
+</root>

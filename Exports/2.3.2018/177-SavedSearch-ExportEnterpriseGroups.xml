@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="177" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportEnterpriseGroups</SearchName>
+    <Description>This report lists FNMS Enterprise Groups.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT 
+         [GroupExID]      
+         ,[GroupCN]            
+         ,[Path]                  
+         ,[Comments]                        
+         ,[NameResourceName]                              
+         ,[DescriptionResourceName]                                    
+         ,[ParentGroupExID]                                          
+         ,[GroupTypeID]                        
+         ,[TreeLevel]
+       FROM [dbo].[GroupEx]
+]]></SearchSQL>
+  </Report>
+</CustomReports>

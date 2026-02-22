@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>File Evidence Exclusion Rules</SearchName>
+    <Description>This report lists the currently configured File evidence exclussion rules.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        SELECT
+          cifer.[FileName]
+          ,cifer.[FileVersion]
+          ,cifer.[ProductVersion]
+          ,cifer.[ProductName]
+          ,cifer.[FilePath]
+          ,cifer.[Company]
+          ,cifer.[Description]
+          ,cifer.[FileSize]
+        FROM dbo.[CustomImportedFileEvidenceRule] cifer
+        ORDER BY 
+          cifer.[FilePath], cifer.[FileName]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       FileName,FileVersion,ProductVersion,ProductName,FilePath,Company,Description,FileSize
+    </SearchColumns>          
+  </Report>
+</CustomReports>

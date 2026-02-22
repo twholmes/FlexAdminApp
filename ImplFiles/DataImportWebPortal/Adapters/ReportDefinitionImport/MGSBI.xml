@@ -1,0 +1,348 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import 
+      Type="XML" 
+      Name="ReportDefinitionImport" 
+      Template="" 
+      Enabled="False" 
+      ConnectionString="ReportDefinitionImport.xml"
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="(ISNULL([SearchName], '&lt;NULL&gt;') + '/' + ISNULL([ComplianceSearchFolderID], '&lt;NULL&gt;'))" 
+      CleanUpControlCharOn="" 
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_ReportDefinitionImport" 
+    >
+
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+      <!--
+        Initialise adapter optional fields
+        Add fields as required to ensure compatability between adapter versions
+      -->    
+      <Object Type="Custom" Name="Add Optional Fields" Query="
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'Action')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [Action] nvarchar(20)
+
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'Exclude')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [Exclude] nvarchar(8)                         
+
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'SearchMapping')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [SearchMapping] nvarchar(4096)                         
+
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'SearchXML')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [SearchXML] nvarchar(4096)                         
+
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'SearchColumns')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [SearchColumns] nvarchar(1024)   
+
+        IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_ReportDefinitionImport' AND column_name = 'CanDelete')
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [CanDelete] nvarchar(8)
+
+        ALTER TABLE dbo.[ECMImport_ReportDefinitionImport] ADD [CanDeleteBit] bit
+      "/>
+      
+      <!--
+        Initialise default field values
+      -->
+      <Object Type="Custom" Name="Initialise Field Values" Query="                    
+        UPDATE dbo.[ECMImport_ReportDefinitionImport]
+        SET 
+        [Exclude] = ISNULL([Exclude], 'FALSE'),
+        [Action] = ISNULL([Action],'add'),
+        [CanDelete] = ISNULL([CanDelete],'yes'),        
+        [CanDeleteBit] = 1
+
+        UPDATE dbo.[ECMImport_ReportDefinitionImport]
+        SET 
+        [CanDeleteBit] = 0
+        WHERE [CanDelete] = 'no'        
+      "/>
+
+      <!--
+        Delete excluded records from import stream
+        We do not want to import rows with a value in the 'Exclude' column; drop them
+        from the import table. These rows cannot be filtered out in the SELECT statement
+        that retrieves data from the source spreadsheet, as otherwise the row numbers
+        on imported data would not match row numbers in the source spreadsheet, leading
+        to incorrect reporting of validation errors.
+      -->
+      <Object Type="Custom" Name="Drop excluded rows" Query="
+        DELETE FROM ECMImport_ReportDefinitionImport WHERE CONVERT(NVARCHAR,[Exclude]) = 'TRUE' OR CONVERT(NVARCHAR,[Exclude]) = '1' 
+        DELETE FROM ECMImport_ReportDefinitionImport WHERE ISNULL([SearchName],'') = '' OR ISNULL([FolderName],'') = ''
+      "/>
+
+      <!--
+      Validate Source Data
+      -->     
+      <Object Type="Custom" Name="Validate Source Data" TimeOut="-1" Query="
+        DECLARE @ImportObjectID INT
+        EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+        /* Validate operator can create records */
+        EXEC dbo.CustomAdapterValidationRegisterRule
+          @ImportObjectID,
+          @IsGlobalRule = 1,
+          @ValidationRule = '
+            NOT EXISTS
+            (
+              SELECT 1
+              FROM dbo.RightsHasAccess(''CMLicenseAlloc'', ''modify'')
+              WHERE HasAccess = 1
+            )',
+          @ErrorMessage = 'You require rights to create license allocations to import this data'
+
+        /* Validate that values are provided in mandatory columns */
+        EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'SearchName'
+        EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'FolderName'
+
+        /* Execute validation rules */
+        EXEC dbo.CustomAdapterValidationExecuteRules
+          @ImportObjectID = @ImportObjectID,
+          @SourceTableName = 'ECMImport_ReportDefinitionImport',
+          @TraceField = 'ISNULL([SearchName], ''&lt;NULL&gt;'') + ''/'' + ISNULL([FolderName], ''&lt;NULL&gt;'')'
+      "/>
+
+      <!--
+      Create Compliance Search Folders
+      -->     
+      <Object Type="Custom" Name="Create Search Folders" Query="        
+        INSERT INTO dbo.ECMImportLog_Object(ImportID, ObjectName, ObjectType, Processed, Status, StartDate) 
+        SELECT [LOG_IMPORT_ID], 'Create Search Folders', 'Custom', COUNT(*), 0, GETDATE()
+        FROM dbo.ECMImport_ReportDefinitionImport
+  
+        DECLARE @ImportObjectID int
+        SET @ImportObjectID = (SELECT ImportObjectID FROM dbo.ECMImportLog_Object WHERE ImportID = [LOG_IMPORT_ID] and ObjectName = 'Create Search Folders')
+  
+        DECLARE @RowNumber int = 0
+        DECLARE @SearchName NVARCHAR(128)           
+        DECLARE @FolderName NVARCHAR(128)
+        DECLARE @ReportFolderID int = 0
+        DECLARE @count int = 0          
+  
+        DECLARE SearchFolderCursor CURSOR FOR
+        SELECT ROWNUMBER, SearchName, FolderName, ComplianceSearchFolderID 
+        FROM dbo.ECMImport_ReportDefinitionImport 
+        WHERE 
+          SearchName is not NULL 
+          and SearchName != '' 
+          and FolderName is not NULL 
+          and FolderName != ''
+  
+        OPEN SearchFolderCursor
+  
+        FETCH NEXT FROM SearchFolderCursor
+        INTO @RowNumber, @SearchName, @FolderName, @ReportFolderID
+  
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+          EXEC @ReportFolderID = dbo.CustomCreateComplianceSearchFolder @FolderName
+          SET @count = @count + 1            
+  
+          UPDATE dbo.ECMImport_ReportDefinitionImport
+          SET ComplianceSearchFolderID = @ReportFolderID
+          WHERE FolderName like @FolderName
+               
+          INSERT INTO dbo.ECMImportLog_Detail(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, MGSRecordKey, Message)
+          VALUES 
+          (
+            [LOG_IMPORT_ID], 
+            @ImportObjectID, 
+            @RowNumber, 
+            'Created', 
+            convert(varchar(255), @SearchName + ' => ' + @FolderName), 
+            convert(nvarchar(40), @FolderName), 
+            'Reports folder created'
+          )
+              
+          FETCH NEXT FROM SearchFolderCursor
+          INTO @RowNumber, @SearchName, @FolderName, @ReportFolderID
+        END
+  
+        CLOSE SearchFolderCursor
+        DEALLOCATE SearchFolderCursor  
+  
+        /* Set log records so the Business Adapter Portal will report correct counts */
+        UPDATE dbo.ECMImportLog_Object
+        SET Status = 1,
+          EndDate = GETDATE(), 
+          Rejected = 0,
+          Updated = 0,
+          Created = @count,
+          Matched = @count
+        WHERE ImportID = [LOG_IMPORT_ID]
+        AND ObjectName = 'Create Search Folders'
+      "/>
+  
+      <!--
+      Create Custom Reports
+      -->
+      <Object Name="Create Custom Reports" Type="Custom" Query="      
+        INSERT INTO dbo.[ECMImportLog_Object](ImportID, ObjectName, ObjectType, Processed, Status, StartDate) 
+        SELECT [LOG_IMPORT_ID], 'Create Custom Reports', 'Custom', COUNT(*), 0, GETDATE()
+        FROM dbo.ECMImport_ReportDefinitionImport
+  
+        DECLARE @ImportObjectID int
+        SET @ImportObjectID = (SELECT ImportObjectID FROM dbo.ECMImportLog_Object WHERE ImportID = [LOG_IMPORT_ID] and ObjectName = 'Create Custom Reports')
+            
+        DECLARE @Actions TABLE(MergeAction VARCHAR(10), ROWNUMBER INT, SearchName NVARCHAR(512), FolderName NVARCHAR(256))    
+       
+        MERGE dbo.ComplianceSavedSearch css
+        USING (
+        SELECT 
+          ecm.[ROWNUMBER]
+          ,ecm.[SearchName]
+          ,ecm.[Description]
+          ,ecm.[FolderName]
+          ,[SearchSQL]
+          ,ISNULL(ecm.[SearchMapping],'&lt;ArrayOfCustomViewColumnMapping /&gt;') as [SearchMapping]
+          ,ecm.[SearchXML]
+          ,ecm.[ComplianceSearchFolderID]
+          ,cst.[ComplianceSearchTypeID]
+          ,ecm.[RestrictedAccessTypeID]
+          ,ecm.[CanDeleteBit]
+          ,ecm.[CreationDate]
+        FROM [dbo].[ECMImport_ReportDefinitionImport] AS ecm
+        JOIN [dbo].[ComplianceSearchType] AS cst ON cst.[TypeName] like ecm.[ComplianceSearchType]
+        WHERE [SearchName] != ''
+        ) AS source(ROWNUMBER, SearchName,[Description],FolderName,SearchSQL,SearchMapping,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,CreationDate)       
+        ON source.SearchName = css.SearchName and source.ComplianceSearchFolderID = css.ComplianceSearchFolderID
+  
+        WHEN NOT MATCHED BY TARGET THEN     
+        INSERT (SearchName,[Description],SearchSQL,SearchMapping,SearchGridLayout,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,CreatedBy,CreationDate)
+        VALUES (SearchName,[Description],SearchSQL,SearchMapping,NULL,SearchXML,ComplianceSearchFolderID,ComplianceSearchTypeID,RestrictedAccessTypeID,CanDelete,SYSTEM_USER,GETDATE())         
+  
+        WHEN MATCHED THEN
+        UPDATE
+        SET css.SearchSQL = source.SearchSQL, 
+          css.SearchMapping = source.SearchMapping, 
+          css.SearchXML = source.SearchXML, 
+          css.SearchGridLayout = NULL,
+          css.ComplianceSearchFolderID = source.ComplianceSearchFolderID, 
+          css.ModifiedBy = SYSTEM_USER, 
+          css.ModificationDate = GETDATE()
+            
+        OUTPUT $action, source.ROWNUMBER, source.SearchName, source.FolderName INTO @Actions
+        ;
+  
+        UPDATE dbo.BusinessImportLogObject_MT
+        SET Status = 1,
+          EndDate = GETDATE(), 
+          Rejected = 0,
+          Updated = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'UPDATE'),
+          Created = (SELECT COUNT(*) FROM @Actions WHERE MergeAction = 'INSERT'),
+          Matched = (SELECT COUNT(*) FROM @Actions)
+        FROM @Actions
+        WHERE ImportID = [LOG_IMPORT_ID]
+        AND ObjectName = 'Create Custom Reports'
+              
+        INSERT INTO dbo.BusinessImportLogDetail_MT(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, Message, TenantID)
+        SELECT
+          [LOG_IMPORT_ID], 
+          @ImportObjectID, 
+          ROWNUMBER, 
+          CASE MergeAction 
+          WHEN 'INSERT' THEN 'Created'
+          WHEN 'UPDATE' THEN 'Updated'
+          END, 
+          convert(varchar(255), FolderName + ' => ' + SearchName),
+          'Create Custom Reports',
+          1
+        FROM @Actions
+      "/>
+
+      <!--
+        Fabricate SearchMappings
+        Only fabricate SearchMapping if a SearchColumns field is present
+      -->     
+      <Object Type="Custom" Name="Fabricate SearchMappings" Query="
+        DECLARE @SavedSearchCount int
+          
+        DECLARE @ImportRowID int
+        DECLARE @SearchName NVARCHAR(128)
+        DECLARE @SearchColumns NVARCHAR(800)           
+        DECLARE @SearchMapping NVARCHAR(MAX)
+        DECLARE @SearchXML NVARCHAR(MAX)        
+
+        SET @SavedSearchCount = 0
+
+        INSERT INTO dbo.ECMImportLog_Object(ImportID, ObjectName, ObjectType, Processed, Status, StartDate) 
+        SELECT [LOG_IMPORT_ID], 'Fabricate SearchMappings', 'Custom', COUNT(*), 0, GETDATE()
+        FROM dbo.[ECMImport_ReportDefinitionImport]
+        WHERE [SearchColumns] is not NULL
+          
+        /* declare the cursor to be used to loop through import records */
+        DECLARE SaveSearchCursor CURSOR FOR
+        SELECT ROWNUMBER, SearchName, SearchColumns FROM dbo.[ECMImport_ReportDefinitionImport]
+        WHERE [SearchColumns] is not NULL
+
+        OPEN SaveSearchCursor
+
+        FETCH NEXT FROM SaveSearchCursor
+        INTO @ImportRowID, @SearchName, @SearchColumns
+        
+        WHILE @@FETCH_STATUS = 0
+        BEGIN          
+          SET @SearchMapping = [dbo].[ConvertSearchColumnNamesToSearchMapping](@SearchName, @SearchColumns)         
+          UPDATE [dbo].[ComplianceSavedSearch] 
+            SET SearchMapping = @SearchMapping 
+          WHERE SearchName = @SearchName;
+          
+          SET @SearchXML = [dbo].[ConvertSearchColumnNamesToSearchXML](@SearchName, @SearchColumns)          
+          UPDATE [dbo].[ComplianceSavedSearch] 
+            SET SearchXML = @SearchXML
+          WHERE SearchName = @SearchName;
+       
+          INSERT INTO dbo.ECMImportLog_Detail(ImportID, ImportObjectID, RecordNumber, Action, RecordDescription, MGSRecordKey)
+          SELECT
+            ImportID, 
+            ImportObjectID, 
+            @SavedSearchCount, 
+            'Updated',
+            @SearchName,
+            @SearchName
+          FROM dbo.ECMImportLog_Object
+          WHERE ImportID = [LOG_IMPORT_ID]
+            AND ObjectName = 'Fabricate SearchMappings' 
+            
+          SET @SavedSearchCount = @SavedSearchCount + 1
+                       
+          FETCH NEXT FROM SaveSearchCursor
+          INTO @ImportRowID, @SearchName, @SearchColumns          
+        END
+
+        CLOSE SaveSearchCursor
+        DEALLOCATE SaveSearchCursor 
+        
+        /* Set log records so the Business Adapter Portal will report correct counts */
+        UPDATE dbo.ECMImportLog_Object
+        SET Status = 1,
+          EndDate = GETDATE(), 
+          Rejected = 0,
+          Updated = @SavedSearchCount,
+          Created = 0,
+          Matched = @SavedSearchCount
+        WHERE ImportID = [LOG_IMPORT_ID]
+          AND ObjectName = 'Fabricate SearchMappings'                 
+      "/>
+
+      <!--
+        Remove all importer log entries with the exception of:
+        - Validate Source Data
+        - Create Search Folders        
+        - Import Custom Reports
+        - Fabricate SearchMappings
+      -->
+      <Object Name="Delete unnecessary logs" Type="Custom" timeout="20000" Query="    
+          DELETE ld
+          FROM ECMImportLog_Detail ld
+            JOIN ECMImportLog_Object lo ON lo.ImportObjectID = ld.ImportObjectID
+          WHERE lo.ObjectName NOT IN ('Validate Source Data', 'Create Search Folders', 'Import Custom Reports', 'Fabricate SearchMappings')
+            AND ld.ImportID = [LOG_IMPORT_ID]           
+        ">
+      </Object>
+
+    </Import>
+  </Imports>
+</root>

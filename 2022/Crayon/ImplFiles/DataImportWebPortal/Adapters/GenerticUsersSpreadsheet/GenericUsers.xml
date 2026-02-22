@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="GenericUsers" Template="" Enabled="False" 
+    	ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=GenericUsers-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'"
+    	Query="select * from [Users$]"
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="SAMAccountName" 
+      CleanUpControlCharOn=""
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_GenericUsers"      
+      >
+
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+      <Object Type="ComplianceDomain" Name="Domain" Update="False" Create="True" UpdateRule="RejectDuplicateRecords" OutputField="Domain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="Domain name" UseForMatching="True" OnMissingFieldValue="Remove Property" />
+      </Object>
+      
+      <Object Type="Location" Name="Location" Update="False" Create="True" UpdateRule="RejectDuplicateRecords" OutputField="Location_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Location" UseForMatching="True" Length="128" RegexSplit="/" UseNullValueForMatching="RemoveProperty" OnMissingFieldValue="Remove Property" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="Location_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="User" Name="User" Update="True" Create="True" UpdateRule="RejectDuplicateRecords" OutputField="User_ID">
+        <Property Type="employeenumber" Name="Employee Number" Update="Do not blank" ValueType="Field Value" Value="EmployeeNumber" Length="128" />
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="Account name" UseForMatching="True" Length="64" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="Domain_ID" DataType="Integer" OnMissingFieldValue="Remove Object" />
+        <Property Type="firstname" Name="First Name" Update="Do not blank" ValueType="Field Value" Value="FirstName" Length="128" />
+        <Property Type="middlename" Name="Middle Name" Update="Do not blank" ValueType="Field Value" Value="MiddleName" Length="128" />
+        <Property Type="lastname" Name="Last Name" Update="Do not blank" ValueType="Field Value" Value="LastName" Length="128" />
+        <Property Type="username" Name="User Full Name" Update="Do not blank" ValueType="Field Value" Value="Full name" Length="512" />
+        <Property Type="userstatus" Name="User Status" Update="Do not blank" ValueType="Field Value" Value="Status" Length="1000" />
+        <Property Type="jobtitle" Name="Job Title" Update="Do not blank" ValueType="Field Value" Value="JobTitle" Length="128" />
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="Email" Length="200" />
+        <Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="Location_ID" Length="128" OnMissingFieldValue="Remove Property" />
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

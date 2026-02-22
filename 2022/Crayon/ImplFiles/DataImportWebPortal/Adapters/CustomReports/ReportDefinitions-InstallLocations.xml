@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Install Locations</SearchName>
+    <Description>This report lists Install Locations recorded in Installer Evidence.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        WITH DATA AS
+        (
+          SELECT 
+            sd.RawSoftwareName AS SoftwareTitle,
+            sd.RawVersion as [SoftwareVersion],
+            sd.Publisher,
+            sv.Value as InstallLocation
+          FROM
+            FNMSInventory.dbo.SoftwareValue AS sv
+            INNER JOIN FNMSInventory.dbo.SoftwareProperty AS sp
+              ON sp.SoftwarePropertyID = sv.SoftwarePropertyID
+            INNER JOIN FNMSInventory.dbo.SoftwareOccurrence AS so
+              ON so.SoftwareOccurrenceID = sv.SoftwareOccurrenceID
+            INNER JOIN FNMSInventory.dbo.SoftwareDetails AS sd
+              ON sd.SoftwareDetailsID = so.SoftwareDetailsID
+          WHERE
+            sp.Property = 'InstallLocation'
+            AND sv.Value <> ''
+        )
+        SELECT
+          d.[SoftwareTitle],
+          d.[SoftwareVersion],
+          d.[Publisher],
+          d.[InstallLocation]
+        FROM
+          DATA d
+        ORDER BY 
+          d.[SoftwareTitle], d.[SoftwareVersion]
+      ]]>
+    </SearchSQL>
+    <SearchColumns>  
+       SoftwareTitle,SoftwareVersion,Publisher,InstallLocation
+    </SearchColumns>          
+  </Report>
+</CustomReports>

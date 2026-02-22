@@ -1,0 +1,102 @@
+<Writers>
+	<!-- 
+		This change addresses FNML-2161: Writer step 'DeleteUnrequiredInstalledFileEvidence' 
+		takes a long time for large customers
+	.-->
+	<Writer xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			Name="DeleteUnrequiredInstalledFileEvidence"
+			Order="617"
+			Retries="1">
+		<![CDATA[
+		
+		-- BEGIN CUSTOMISATION
+
+		IF OBJECT_ID('tempdb..#d') IS NOT NULL
+			DROP TABLE #d
+
+		CREATE TABLE #d(
+			#dID					INT IDENTITY NOT NULL,
+			FileEvidenceID          INT NOT NULL,
+			ComplianceComputerID    INT NOT NULL,
+			AccessModeID            INT NOT NULL,
+			CONSTRAINT PK_#d PRIMARY KEY CLUSTERED(#dID)
+		)
+
+		INSERT #d(FileEvidenceID, ComplianceComputerID, AccessModeID)
+		SELECT FileEvidenceID, ComplianceComputerID, AccessModeID
+		FROM dbo.InstalledFileEvidence
+		WHERE
+			NOT EXISTS (
+				SELECT 1
+				FROM #TmpInstalledFileEvidence AS tife
+				WHERE tife.RowNumber = 1
+					AND tife.FileEvidenceID = InstalledFileEvidence.FileEvidenceID
+					AND tife.ComplianceComputerID = InstalledFileEvidence.ComplianceComputerID
+					AND tife.AccessModeID = InstalledFileEvidence.AccessModeID
+			)
+
+		PRINT 'Identified ' + CAST(@@ROWCOUNT AS VARCHAR) + ' InstalledFileEvidence rows to be deleted'
+
+		DECLARE @min INT
+		DECLARE @max INT
+		SELECT @min = MIN(#dID), @max = MAX(#dID) FROM #d
+
+		DECLARE @batchSize INT
+		SET @batchSize = ISNULL((SELECT Value FROM dbo.DatabaseConfiguration WHERE Property = 'FileEvidenceWriterBatchSize'), 1000000)
+
+		WHILE @min <= @max
+		BEGIN
+			PRINT CONVERT(varchar, GETDATE(), 126) + ' Deleting rows ' + CAST(@min AS VARCHAR) + ' to ' + CAST(@min + @batchSize - 1 AS VARCHAR)
+
+			DELETE ife
+			FROM dbo.InstalledFileEvidence ife
+				JOIN #d
+					ON #d.FileEvidenceID = ife.FileEvidenceID
+					AND #d.ComplianceComputerID = ife.ComplianceComputerID
+					AND #d.AccessModeID = ife.AccessModeID
+			WHERE #d.#dID BETWEEN @min AND (@min + @batchSize - 1)
+
+			SET @min = @min + @batchSize
+		END
+
+		PRINT CONVERT(varchar, GETDATE(), 126) + ' Finished deleting InstalledFileEvidence rows'
+
+		DROP TABLE #d		
+		
+		/*
+		-- Delete obsolete records that do not exist anymore
+		DECLARE @DeletedInstalledFileEvidenceCount BIGINT
+		DECLARE @BatchSize INT
+		DECLARE @Rows INT
+
+		SET @Rows = 1
+		SET @DeletedInstalledFileEvidenceCount = 0
+				
+		WHILE @Rows > 0
+		BEGIN
+			SET @BatchSize = ISNULL((SELECT Value FROM dbo.DatabaseConfiguration WHERE Property = 'FileEvidenceWriterBatchSize'), 1000000)
+
+			DELETE TOP(@BatchSize) 
+			dbo.InstalledFileEvidence
+			WHERE NOT EXISTS (	SELECT 'x'
+								FROM #TmpInstalledFileEvidence AS tife
+								WHERE tife.RowNumber = 1
+								AND tife.FileEvidenceID = InstalledFileEvidence.FileEvidenceID
+								AND tife.ComplianceComputerID = InstalledFileEvidence.ComplianceComputerID
+								AND tife.AccessModeID = InstalledFileEvidence.AccessModeID)
+
+			SET @Rows = @@ROWCOUNT
+			SET @DeletedInstalledFileEvidenceCount = @DeletedInstalledFileEvidenceCount + @Rows
+				
+		END
+		
+		PRINT N'Removed ' + CAST(@DeletedInstalledFileEvidenceCount AS nvarchar(MAX)) + N' records from InstalledFileEvidence that no longer exist in data sources'
+
+		*/
+
+		-- END CUSTOMISATION
+
+		]]>
+	</Writer>
+
+</Writers>

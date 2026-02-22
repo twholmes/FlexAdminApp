@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="SqlServer" Name="ADUsers" Template="Custom Import" Enabled="True" 
+    	ConnectionString="Integrated Security=SSPI;Persist Security Info=False;Initial Catalog={DBNAME};Data Source={SQLSERVER}"
+    	Query="SELECT * FROM [dbo].[ADUsers]"
+    	TimeOut="0" 
+    	TraceActions="created,updated,rejected" 
+    	TraceFields="[SamAccountName]"
+     >
+      <Log Name="NewLog" Output="file" Loglevel="debug" Filename="{LOGDIR}\ADUsers_[DATE]_[TIME].log" />
+    	
+      <Object Type="ComplianceDomain" Name="Domain" Update="False" Create="True" OutputField="Domain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="Domain" UseForMatching="True" />
+      </Object>
+      
+      <Object Type="CorporateUnit" Name="Corporate Unit" Update="False" Create="True" OutputField="CorporateUnit_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="BusinessUnit" UseForMatching="True" Length="128" RegexSplit="/" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="CorporateUnit_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="Location" Name="Location" Update="False" Create="True" OutputField="Location_ID">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Location" UseForMatching="True" Length="128" RegexSplit="/" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="Location_ID" UseForMatching="True" MatchingMode="like" DataType="Integer" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="User" Name="User" Update="True" Create="True" OutputField="User_ID">
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="SamAccountName" UseForMatching="True" Length="64" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="Domain_ID" UseForMatching="True" DataType="Integer" />
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="Email" Length="200" />
+        <Property Type="alternateemail" Name="AlternateEmail" Update="Do not blank" ValueType="Field Value" Value="UserPrincipalName" Length="200" />
+        <Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="Location_ID" Length="128" />
+        <Property Type="businessunitid" Name="Corporate Unit ID" Update="Do not blank" ValueType="Field Value" Value="CorporateUnit_ID" Length="128" />
+      </Object>
+      
+    </Import>
+  </Imports>
+</root>

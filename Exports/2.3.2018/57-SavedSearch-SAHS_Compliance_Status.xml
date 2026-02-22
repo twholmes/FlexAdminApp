@@ -1,0 +1,136 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="57" Exclude="" Action="add" FolderID="">
+    <SearchName>SAHS Compliance Status</SearchName>
+    <Description>unknown</Description>
+    <FolderName>SAH Views</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate software titles that user is allowed access
+	CREATE TABLE #SoftwareTitleAllowed (SoftwareTitleID int PRIMARY KEY)
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'list')) = 1
+	BEGIN
+			INSERT  #SoftwareTitleAllowed SELECT SoftwareTitleID FROM SoftwareTitle
+	END
+
+-- Pre-calculate installed software that user is allowed access
+	CREATE TABLE #InstalledSoftwareAllowedComputer (ComplianceComputerID int PRIMARY KEY)
+
+	IF (SELECT HasAccess FROM dbo.RightsHasAccess('CMApplications', 'read')) = 1
+	BEGIN
+		INSERT	#InstalledSoftwareAllowedComputer
+		SELECT	ComplianceComputerID
+		FROM	TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+	END
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate computers that user is allowed access
+	CREATE TABLE #ComplianceComputerAllowed (ComplianceComputerID int PRIMARY KEY)
+	INSERT  #ComplianceComputerAllowed SELECT * FROM TableComplianceComputerCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate assets that user is allowed access
+	CREATE TABLE #AssetAllowed (AssetID int PRIMARY KEY)
+	INSERT  #AssetAllowed SELECT * FROM TableAssetCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Pre-calculate software titles that match filter
+	CREATE TABLE #SoftwareTitleFilter (SoftwareTitleID int PRIMARY KEY)
+	INSERT  #SoftwareTitleFilter
+	SELECT  DISTINCT SoftwareTitle.SoftwareTitleID
+	FROM    SoftwareTitle
+			INNER JOIN #SoftwareTitleAllowed AS st_allowed ON st_allowed.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+			-- Link from SoftwareTitle to Installations
+        	LEFT OUTER JOIN (
+        			SELECT  InstalledSoftware.*
+        			FROM    InstalledSoftware
+        					INNER JOIN #InstalledSoftwareAllowedComputer AS isac ON isac.ComplianceComputerID = InstalledSoftware.ComplianceComputerID
+        	) AS R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware ON R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+        -- Link from InstalledSoftware to Computer
+        	LEFT OUTER JOIN #ComplianceComputerAllowed AS R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed ON R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed.ComplianceComputerID = R2_bfd577cc81eb08f663b69a18109eada8_ApplicationToInstallation_InstalledSoftware.ComplianceComputerID
+        	LEFT OUTER JOIN ComplianceComputer AS R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer ON R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer.ComplianceComputerID = R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_allowed.ComplianceComputerID
+        -- Link from Computer to Asset
+        	LEFT OUTER JOIN #AssetAllowed AS R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_allowed ON R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_allowed.AssetID = R3_25e9fb8e5e8b8f49192383076433e948_InstallationToComputer_ComplianceComputer.AssetID
+        	LEFT OUTER JOIN Asset AS R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_Asset ON R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_Asset.AssetID = R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_allowed.AssetID
+        LEFT OUTER JOIN GroupEx AS R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_CorporateStructure ON R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_Asset.BusinessUnitID = R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_CorporateStructure.GroupExID
+	WHERE   R4_52135e96f0af452a5d685ab7eba6bf38_ComputerToAsset_CorporateStructure.GroupExID LIKE N'2.29.3.%' ESCAPE '\'
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for software titles
+                	SELECT  SoftwareTitle.SoftwareTitleID AS [ApplicationID],
+                        SoftwareTitle.FullName AS [ApplicationName],
+                        SoftwareTitleVersion.VersionName AS [ApplicationVersion],
+                        ISNULL(NumberOfInstallationsCount.NumberOfInstallations, 0) AS [NumberOfInstallations],
+                        ISNULL(NumberOfLicensesCount.NumberOfLicenses, 0) AS [NumberOfLicenses],
+                        [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_SoftwareLicenseID],
+                        [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_LicenseCompliance],
+                        [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_PublisherName],
+                        [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_LicenseType],
+                        [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_ParentLicenseID]
+                	FROM    SoftwareTitle
+                			-- Filter
+                			INNER JOIN #SoftwareTitleFilter AS filter ON filter.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                			-- Additional joins
+                			LEFT OUTER JOIN SoftwareTitleVersion ON SoftwareTitle.SoftwareTitleVersionID = SoftwareTitleVersion.SoftwareTitleVersionID
+                        LEFT OUTER JOIN (SELECT COUNT(DISTINCT InstalledSoftware.InstalledSoftwareID) AS NumberOfInstallations, InstalledSoftware.SoftwareTitleID FROM InstalledSoftware INNER JOIN (SELECT ins.InstalledSoftwareID FROM InstalledSoftware AS ins JOIN #InstalledSoftwareAllowedComputer AS cc ON cc.ComplianceComputerID = ins.ComplianceComputerID) AS InstalledSoftware_filter ON InstalledSoftware_filter.InstalledSoftwareID = InstalledSoftware.InstalledSoftwareID GROUP BY InstalledSoftware.SoftwareTitleID) AS NumberOfInstallationsCount ON NumberOfInstallationsCount.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        LEFT OUTER JOIN (SELECT COUNT(DISTINCT SoftwareTitleLicense.SoftwareLicenseID) AS NumberOfLicenses, SoftwareTitleLicense.SoftwareTitleID FROM SoftwareTitleLicense INNER JOIN #SoftwareLicenseAllowed AS SoftwareTitleLicense_filter ON SoftwareTitleLicense_filter.SoftwareLicenseID = SoftwareTitleLicense.SoftwareLicenseID GROUP BY SoftwareTitleLicense.SoftwareTitleID) AS NumberOfLicensesCount ON NumberOfLicensesCount.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+                        -- Link from SoftwareTitle to Licenses via SoftwareTitleLicense table
+                        	LEFT OUTER JOIN (
+                        			SELECT  SoftwareTitleLicense.SoftwareTitleID,
+                        					SoftwareLicense.*
+                        			FROM    SoftwareTitleLicense
+                        					INNER JOIN (
+                        							-- Custom view query for licenses
+                        								SELECT  SoftwareLicense.SoftwareLicenseID AS [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_SoftwareLicenseID],
+                        							        SoftwareLicenseComplianceStatusI18N.StatusDefaultValue AS [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_LicenseCompliance],
+                        							        Publisher.VendorName AS [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_PublisherName],
+                        							        SoftwareLicenseTypeI18N.TypeDefaultValue AS [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_LicenseType],
+                        							        SoftwareLicense.ParentLicenseID AS [R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_ParentLicenseID]
+                        								FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                        										-- Filter
+                        										INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN SoftwareLicenseComplianceStatusI18N ON SoftwareLicenseComplianceStatusI18N.SoftwareLicenseComplianceStatusID = SoftwareLicense.SoftwareLicenseComplianceStatusID
+                        							        LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+                        							        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        					) AS SoftwareLicense ON SoftwareLicense.R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_SoftwareLicenseID = SoftwareTitleLicense.SoftwareLicenseID
+                        	) AS ApplicationToLicense ON ApplicationToLicense.SoftwareTitleID = SoftwareTitle.SoftwareTitleID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([ApplicationName] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([ApplicationVersion] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberOfInstallations] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([NumberOfLicenses] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_LicenseCompliance] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_4aee43311110cfc39c2a9349a14a9cef_ApplicationToLicense_PublisherName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

@@ -1,0 +1,49 @@
+﻿<Readers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateTargetTempPackageTables" 
+			Order="200" 
+			Retries="1">
+		<![CDATA[
+
+			IF OBJECT_ID('TempDB..#AVPackage') IS NOT NULL
+				DROP TABLE #AVPackage
+							
+			CREATE TABLE #AVPackage
+			(
+				PackageID		INT,
+				PackageName		NVARCHAR(256) COLLATE database_default,
+				Status			NVARCHAR(32) COLLATE database_default
+			)
+						
+		]]>
+	</Reader>
+
+    <Reader 
+			xsi:type="SourceToTarget"
+			Name="GetPackages"
+			Order="210"
+			Retries="1"
+			Method="GetPackages"
+			Language="PowerShell"		
+			Table="#AVPackage">
+
+			<InputVariable Name="WebServicesURI" Variable="WebServicesURI"/>
+			<InputVariable Name="Username" Variable="Username"/>
+			<InputVariable Name="Password" Variable="Password"/>
+
+			<OutputSchema Name="PackageID" Type="int" Property="PackageID" />				
+			<OutputSchema Name="PackageName" Type="nvarchar" Length="256" Property="PackageName" />
+			<OutputSchema Name="Status" Type="nvarchar" Length="32" Property="Status" />
+
+	</Reader>
+
+	<Reader xsi:type="ExecuteOnTarget" 
+			Name="CreateIndexesOnAVPackage" 
+			Order="220" 
+			Retries="1">
+		<![CDATA[
+			CREATE INDEX IX_#AVPackage_PackageID ON #AVPackage(PackageID)
+		]]>
+	</Reader>
+
+</Readers>

@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>IBM PVU License Consumption Detail</SearchName>
+    <Description>This report mirrors the standard IBM PVU License Consumption repory.</Description>
+    <FolderName>License Compliance</FolderName>    
+    <SearchSQL>
+      <![CDATA[          
+        EXEC dbo.CustomReportIBMPVULicenseConsumptionDetail
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+       RowIndex,DeviceID,SoftwareLicenseID,Cluster,Host,ComputerName,SerialNo,LicenseName,LicenseType,ApplicationName,PublisherName,ProductName,VersionName,Edition,Domain,IPAddress,DeviceType,ModelNo,OperatingSystem,ProcessorType,MaxClockSpeed,PvuPointsPerCore,NumberOfProcessors,NumberOfCores,Threads,HostNumberOfProcessors,HostNumberOfCores,HostThreads,SubCapacityPVU,UseHostProcessorInformationHostSubCapacityPVU,HostFullCapacityPVU,Allocated,Installed,InventoryAgent,Exempted,ExemptionReason,LastInventoryDate
+    </SearchColumns>          
+  </Report>
+</CustomReports>

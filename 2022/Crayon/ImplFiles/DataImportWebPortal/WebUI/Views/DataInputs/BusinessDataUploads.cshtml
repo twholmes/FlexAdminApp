@@ -1,0 +1,210 @@
+@* Copyright (C) 2015-2017 Flexera Software *@
+
+<script src="/Suite/Scripts/angular.min.js"></script>
+
+<script>
+angular.module('uploadDataApp', [])
+.run(function($rootScope, $http, $timeout) {
+	var statusAutoRefreshIntervalInSeconds = 60;
+
+	@helper SafeJScriptString(string raw)
+	{
+		@: '@Html.Raw(raw.Trim().Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", " ").Replace("\r", " "))'
+	}
+
+	$rootScope.model = {
+		loading: 0,
+		status: {},
+		monitorTaskRunning: true, // Assume task is running until we know otherwise
+		adapters: [
+ 			@{
+				foreach (var r in BusinessAdapterRegistrations.AllRegistrations.OrderBy(r => r.DisplayName))
+				{
+					<text>
+					{
+						adapterSubdirectory: @SafeJScriptString(r.AdapterSubdirectory),
+						displayName: @SafeJScriptString(r.DisplayName),
+						description: @SafeJScriptString(r.DisplayDescription),
+						templateDownloadText: @SafeJScriptString(r.TemplateFileHyperlinkDescription),
+						templateFileName: @SafeJScriptString(r.TemplateFileName),
+						selectFileLabel: @SafeJScriptString(r.SelectFileLabel),
+						importButtonText: @SafeJScriptString(r.ImportButtonText),
+					},
+					</text>
+				}
+			}
+		]
+	};
+
+	if ($rootScope.model.adapters.length == 1) { // Select the first adapter by default if there is only 1 adapter configured
+		$rootScope.model.selectedAdapter = $rootScope.model.adapters[0];
+	}
+
+	var timeoutPromise;
+
+	$rootScope.refreshStatus = function() {
+		if (timeoutPromise) {
+			$timeout.cancel(timeoutPromise);
+			timeoutPromise = null;
+		}
+
+		if (location.hash == "#BusinessDataUploads") // Only refresh status while our tab is visible
+		{
+			++$rootScope.model.loading;
+
+			$http.get('BusinessDataUploads/CurrentStatus?maxTasks=10')
+				.success(function(data, status, headers, config) {
+					$rootScope.model.status = data.Uploads;
+					$rootScope.model.hasAccessToOtherOperatorsTasks = data.HasAccessToOtherOperatorsTasks;
+					$rootScope.model.monitorTaskRunning = data.MonitorTaskRunning;
+				})
+				.error(function(data, status, headers, config) {
+					httpError('Error refreshing status', data, status, config);
+				})
+				.finally(function() {
+					--$rootScope.model.loading;
+					timeoutPromise = $timeout($rootScope.refreshStatus, statusAutoRefreshIntervalInSeconds * 1000);
+				});
+		}
+	};
+
+	$rootScope.removeTask = function(id) {
+		++$rootScope.model.loading;
+
+		$http.get('BusinessDataUploads/RemoveTask?id=' + id)
+		.success(function(data, status, headers, config) {
+			$rootScope.refreshStatus();
+		})
+		.error(function(data, status, headers, config) {
+			httpError('Error removing task', data, status, config);
+		})
+		.finally(function() {
+			--$rootScope.model.loading;
+		});
+	};
+
+	$rootScope.cancelTask = function(id) {
+		++$rootScope.model.loading;
+
+		$http.get('BusinessDataUploads/CancelTask?id=' + id)
+		.success(function(data, status, headers, config) {
+			$rootScope.refreshStatus();
+
+			if (!data.Canceled) {
+				alert('Error: This upload is currently being processed so cannot be canceled.');
+			}
+		})
+		.error(function(data, status, headers, config) {
+			httpError('Error canceling task', data, status, config);
+		})
+		.finally(function() {
+			--$rootScope.model.loading;
+		});
+	};
+
+	$(window).on('hashchange', function() { $rootScope.refreshStatus(); }); // Attempt status refresh whenever tab is switched
+	businessDataUploadControl.FileUploadComplete.AddHandler(function() { $rootScope.refreshStatus(); }); // Refresh status after any upload
+	$rootScope.refreshStatus(); // Attempt status refresh upon initial page load
+
+	function httpError(msg, data, status, config) {
+		msg = msg + ': ' + status;
+		if (window.console && console.error)
+			console.error(msg, config, data);
+
+		ErrorsCore.unhandledError(msg, config.url);
+	}
+});
+
+previousUploadsGridControl = {};
+</script>
+
+<div ng-app="uploadDataApp" class="ignore-changes">
+	<h2>Upload Data</h2>
+
+	<div ng-show="model.adapters.length != 1"> @* Only display selector control if there are multiple adapters to select *@
+		Select the type of data file that you wish to upload and import:
+
+		<select ng-model="model.selectedAdapter" ng-options="value as value.displayName for value in model.adapters"></select>
+
+		<br/><br/>
+	</div>
+
+	<div ng-show="model.selectedAdapter"> @* Only display upload controls if an adapter is selected *@
+		<p>{{ model.selectedAdapter.description }}</p>
+
+		<div>
+			<p>{{ model.selectedAdapter.selectFileLabel || 'Select the file to upload and import:' }}</p>
+			@using (Ui.BeginUploadForm(string.Empty, string.Empty)) {
+				<input type="hidden" name="adapterSubdirectory" value="{{ model.selectedAdapter.adapterSubdirectory }}"/>
+
+				@* allowedMaxFileSize must be no larger than the maxRequestLength configured in DataImportWebPortal-Setup.ps1 *@
+				@Ui.FileUpload("businessDataUploadControl", "BusinessDataUploads", "HandleUpload", null, allowedMaxFileSize: 20*1024*1024, uploadButtonCaption: "{{ model.selectedAdapter.importButtonText || 'Upload' }}")
+			}
+		</div>
+
+		<div ng-if="model.selectedAdapter.templateFileName">
+			<br/>
+			<a href="BusinessDataUploads/DownloadTemplate?adapterSubdirectory={{ model.selectedAdapter.adapterSubdirectory }}">{{ model.selectedAdapter.templateDownloadText || 'Download template' }}</a>
+		</div>
+	</div>
+
+	<table border="0" width="100%">
+	  <tr>
+		<td><h2>Previous 10 Uploads</h2></td>
+		<td align="right"><button class="button-secondary" ng-click="refreshStatus();">Refresh status now</button></td>
+	  </tr>
+	</table>
+
+	<div ng-if="!model.monitorTaskRunning">
+		<strong><span class="ts-dark-orange"><span class="icon-small icon-warning"></span> WARNING:</span>
+		The server-side task to process uploaded files is currently not running</strong><br/><br/>
+	</div>
+
+	<div class="grid" ng-class="model.loading != 0 ? 'grid-loading' : ''" data-control="previousUploadsGridControl">
+		<table style="border-collapse: collapse; width: 100%;" cellpadding="0" cellspacing="0">
+			<thead>
+				<tr>
+					<td class="grid-column-header">Upload type</td>
+					<td class="grid-column-header">File name</td>
+					<td class="grid-column-header" ng-if="model.hasAccessToOtherOperatorsTasks">Operator</td>
+					<td class="grid-column-header">Uploaded</td>
+					<td class="grid-column-header">Last activity</td>
+					<td class="grid-column-header">Status summary</td>
+					<td class="grid-column-header">Diagnostic log</td>
+					<td class="grid-column-header">Actions</td>
+				</tr>
+			</thead>
+			<tbody>
+				<tr ng-repeat="s in model.status" ng-class-even="'grid-even-row'" ng-class-odd="'grid-odd-row'">
+					<td class="grid-cell">{{ s.Adapter }}</td>
+					<td class="grid-cell"><a href="BusinessDataUploads/DownloadDataSourceFile?id={{ s.CustomBusinessDataUploadTaskID }}">{{ s.DataSourceFileName }}</a></td>
+					<td class="grid-cell" ng-if="model.hasAccessToOtherOperatorsTasks">{{ s.OperatorLogin }}</td>
+					<td class="grid-cell">{{ s.StartTime }}</td>
+					<td class="grid-cell">{{ s.LastUpdateTime }}</td>
+					<td class="grid-cell">
+						@Html.Action("RenderUploadStatusSummary", "BusinessDataUploads", new { modelVariable = new Tuple<string, string>("uploadDataApp", "s") })
+						<div ng-if="s.StatusDetails && s.StatusDetails.length != 0">
+							<a href="BusinessDataUploads/UploadDetails?id={{ s.CustomBusinessDataUploadTaskID }}">View full details</a>
+						</div>
+					</td>
+					<td class="grid-cell"><span ng-if="s.LogFilePath && s.Status != 2"><a href="BusinessDataUploads/DownloadLog?id={{ s.CustomBusinessDataUploadTaskID }}">Download</a></span></td>
+					<td class="grid-cell">
+						<span ng-if="s.Status == 1">
+							<a href="" ng-click="cancelTask(s.CustomBusinessDataUploadTaskID)" title="Cancel this upload from importing (as long as the import has not started processing)">Cancel</a>
+						</span>
+						<span ng-if="s.Status == 3 || s.Status == 4 || s.Status == 5">
+							<a href="" ng-click="removeTask(s.CustomBusinessDataUploadTaskID)" title="Remove this upload from the status shown here">Remove</a>
+						</span>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+		<div class="grid-loading-panel"></div>
+		<div ng-show="!model.status.length && model.loading == 0" class="grid-noresults" ng-cloak>
+			<h4>No previous uploads</h4>
+		</div>
+	</div>
+</div>
+
+<br/><br/>
+<div style="position: absolute; bottom: 0"><em>This page is a contributed add-on module for FlexNet Manager Suite provided for use on an as-is basis without support.</em></div>

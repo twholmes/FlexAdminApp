@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+	This configuration file contains details to register the business
+	adapter in this folder with the business importer portal module.
+-->
+<BusinessAdapterRegistration>
+	<!-- Text to be displayed in drop down list for selecting which data file type to import -->
+	<DisplayName>CorpUnit change proposals spreadsheet</DisplayName>
+
+	<!--
+		Description of this import to be displayed below drop down list when it is selected.
+		Default: Blank (no description)
+	-->
+	<DisplayDescription>
+		Use this import to create new CorpUnits change proposals.
+	</DisplayDescription>
+
+	<!--
+		Text to be displayed to prompt user to select a file
+		to be uploaded.
+
+		Default if not specified:
+		"Select the file to upload and import:"
+	-->
+	<SelectFileLabel>
+		Select the spreadsheet containing new CorpUnit Group change proposals to import:
+	</SelectFileLabel>
+
+	<!-- Expected extension of files that are uploaded (typically "xls", "xlsx", "csv" or "xml") -->
+	<UploadFileType>xlsx</UploadFileType>
+
+	<!--
+		Text to display on the "Upload" button to upload
+		and queue a file for importing.
+
+		Default if not specified: "Upload"
+	-->
+	<ImportButtonText>Upload and Create Group change proposals</ImportButtonText>
+
+	<!--
+		Text to display in a link to download a template
+		file with the correct structure to be populated for
+		importing via this adapter.
+
+		Default if not specified: "Download template"
+	-->
+	<TemplateFileHyperlinkDescription>
+		Download CorpUnit GroupEx Path Change proposals spreadsheet
+	</TemplateFileHyperlinkDescription>
+
+	<!-- Name of the template file. Leave this blank if there is no template file. -->
+	<TemplateFileName>FlexDemoCorpUnitChange.xlsx</TemplateFileName>
+
+	<!-- MGSBI config file containing the adapter definition to be executed -->
+	<ConfigFile>GroupChangeProposals.xml</ConfigFile>
+
+	<!-- Name of the import in ConfigFile to be executed -->
+	<ImportName>GroupChangeProposals</ImportName>
+</BusinessAdapterRegistration>

@@ -1,0 +1,291 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<ManageSoft connectiontype="ecm" runintransaction="False" />
+	<Imports>
+		<Import 
+			Type="Excel" 
+			Name="Subnets" 
+			Template="" Enabled="False" 
+			ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-SubnetsSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+			Query="select * from [Subnets$]" 
+			TraceActions="created,deleted,updated,rejected" 
+			TraceFields="ISNULL([IPSubnet], '&lt;NULL&gt;')" 
+			CleanUpControlCharOn=""
+			RunInTransaction="True"
+		>
+			<Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+			<Object	
+				Name="Add derived properties"
+				Type="Custom"
+				Query="	
+					ALTER TABLE #ECMImport_Subnets ADD IPSubnet NVARCHAR(256)
+					ALTER TABLE #ECMImport_Subnets ADD IPSubnetBits NVARCHAR(256)
+					ALTER TABLE #ECMImport_Subnets ADD BeaconID INT
+					"
+			/>
+
+
+			<Object	
+				Name="Derive Property Values"
+				Type="Custom"
+				Query="	
+					UPDATE s 
+					SET
+						IPSubnet = REPLACE(REPLACE(RTRIM(LTRIM(SUBSTRING(s.Subnet, 0, CHARINDEX('/', s.Subnet)))), ',', '.'), ';', '.'), 
+						IPSubnetBits = RTRIM(LTRIM(SUBSTRING(s.Subnet, CHARINDEX('/', s.Subnet)+1, LEN(s.Subnet)))),
+						BeaconID = b.BeaconID
+					FROM   #ECMImport_Subnets AS s
+					LEFT JOIN
+						dbo.Beacon AS b ON s.Beacon = b.BeaconName
+
+					IF OBJECT_ID('CustomTempECMImport_Subnets') IS NOT NULL
+							DROP TABLE CustomTempECMImport_Subnets
+
+					SELECT *
+					INTO CustomTempECMImport_Subnets
+					FROM #ECMImport_Subnets						
+					"
+			/>
+
+			<Object 
+				Type="Custom" 
+				Name="Validate Source Data" 
+				TimeOut="-1" 
+				Query="
+					DECLARE @ImportObjectID INT
+					EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+					/* Validate operator can upload subnets */
+					EXEC dbo.CustomAdapterValidationRegisterRule
+						@ImportObjectID,
+						@IsGlobalRule = 1,
+						@ValidationRule = '
+							NOT EXISTS(
+								SELECT 1
+								FROM dbo.RightsHasAccess(''CMEnterprise'', ''modify'')
+								WHERE HasAccess = 1
+							)
+						',
+						@ErrorMessage = 'You need to be a member of the Administrator role to import this data'
+
+					/* Validate that values are provided in mandatory columns */
+					EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'Beacon'
+					EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'Subnet'
+					EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'Site'
+
+					/* Check for duplicates */
+					EXEC dbo.CustomAdapterValidationRegisterRule
+						@ImportObjectID,
+						@ValidationRule = '
+							source.Subnet != ''''
+							AND EXISTS (
+								SELECT 1
+								FROM #ECMImport_Subnets s
+								WHERE s.Subnet = source.Subnet
+								GROUP BY s.Subnet
+								HAVING COUNT(*) > 1 
+							)
+						',
+						@ErrorMessage = 'There is more that one row in the spreadsheet with a subnet value of [@SourceColumn1Value@]',
+						@SourceColumn1Name = 'Subnet'
+
+					/* Validate beacon */
+					EXEC dbo.CustomAdapterValidationRegisterRule
+						@ImportObjectID,
+						@ValidationRule = '
+							source.[Beacon] != ''''
+							AND NOT EXISTS(
+								SELECT 1
+								FROM dbo.Beacon b
+								WHERE b.BeaconName = source.[Beacon]
+							)
+						',
+						@ErrorMessage = 'There is no beacon with the name [@SourceColumn1Value@]',
+						@SourceColumn1Name = 'Beacon'
+
+					/* Validate Subnet */
+					EXEC dbo.CustomAdapterValidationRegisterRule
+						@ImportObjectID,
+						@ValidationRule = '
+							NOT (
+								source.IPSubnet LIKE ''%_.%_.%_.%_'' AND /* 3 periods and no empty octets */
+								source.IPSubnet NOT LIKE ''%.%.%.%.%'' AND /* not 4 periods or more */
+								source.IPSubnet NOT LIKE ''%[^0-9.]%'' AND /* no characters other than digits and periods */
+								source.IPSubnet NOT LIKE ''%[0-9][0-9][0-9][0-9]%'' AND /* not more than 3 digits per octet */
+								source.IPSubnet NOT LIKE ''%[3-9][0-9][0-9]%'' AND /* NOT 300 - 999 */
+								source.IPSubnet NOT LIKE ''%2[6-9][0-9]%'' AND /* NOT 260 - 299 */
+								source.IPSubnet NOT LIKE ''%25[6-9]%'' /* NOT 256 - 259 */
+							)
+						',
+						@ErrorMessage = 'The IP address component of the Subnet [@SourceColumn1Value@] is not valid',
+						@SourceColumn1Name = 'Subnet'
+
+					EXEC dbo.CustomAdapterValidationRegisterRule
+						@ImportObjectID,
+						@ValidationRule = '
+							NOT (
+								source.IPSubnetBits LIKE ''[1-9]'' OR
+								source.IPSubnetBits LIKE ''[1-2][0-9]'' OR
+								source.IPSubnetBits LIKE ''[3][0-2]''
+							)
+						',
+						@ErrorMessage = 'The subnet mask component of the Subnet [@SourceColumn1Value@] is not valid',
+						@SourceColumn1Name = 'Subnet'
+
+
+					/* Execute validation rules */
+					EXEC dbo.CustomAdapterValidationExecuteRules
+						@ImportObjectID = @ImportObjectID,
+						@SourceTableName = '#ECMImport_Subnets',
+						@TraceField = 'ISNULL([Subnet], ''&lt;NULL&gt;'')'
+
+					" 
+				/>
+
+				<Object	
+					Name="Add Site"
+					Type="Custom"
+					Query="	
+						IF OBJECT_ID('tempdb..#Site') IS NOT NULL
+								DROP TABLE #Site
+													
+						DECLARE @RecordCount INT
+
+						SELECT	LTRIM(RTRIM(staging.Site)) AS 'Name',
+								CAST('False' AS BIT) AS 'AutoPopulated',
+								CAST('True' AS BIT) AS 'Enabled'
+						INTO	#Site
+						FROM	#ECMImport_Subnets AS staging
+						WHERE	NOT EXISTS
+								(
+									/* verify that site does not exist */
+									SELECT	'X'
+									FROM	dbo.Site AS x
+									WHERE	x.Name = staging.Site
+								)	
+						GROUP BY
+							staging.Site
+
+						SET @RecordCount = @@ROWCOUNT
+
+						DECLARE @BusinessImportLogObject TABLE (ImportObjectID INT);
+						INSERT INTO dbo.BusinessImportLogObject (ImportID, ObjectName, ObjectType, StartDate, EndDate, Status, Processed, Created)
+						OUTPUT INSERTED.ImportObjectID INTO @BusinessImportLogObject
+						SELECT [LOG_IMPORT_ID], 'Add Site', null, GETDATE(), GETDATE(), 1, @RecordCount, @RecordCount
+							
+						DECLARE @ImportObjectID INT
+						SELECT @ImportObjectID = ImportObjectID FROM @BusinessImportLogObject
+
+						INSERT INTO dbo.BusinessImportLogDetail(ImportID, RecordNumber, Action, ImportObjectID, RecordDescription, Message)
+						SELECT [LOG_IMPORT_ID], 0, 'Created', @ImportObjectID, 'Site name: ' + [Name], NULL
+						FROM #Site	
+
+						/* Add Site */
+						EXEC dbo.SiteAddBatch
+
+						"
+					/>
+				
+				<Object	
+					Name="Add Subnet"
+					Type="Custom"
+					Query="	
+						IF OBJECT_ID('tempdb..#SiteSubnet') IS NOT NULL
+							DROP TABLE #SiteSubnet
+
+						DECLARE @RecordCount INT
+
+						SELECT	staging.IPSubnet,
+								staging.IPSubnetBits,
+								s.SiteID,
+								CAST('False' AS BIT) AS 'AutoPopulated',
+								CAST('True' AS BIT) AS 'Enabled',
+								staging.ROWNUMBER
+						INTO	#SiteSubnet
+						FROM	#ECMImport_Subnets AS staging
+						INNER JOIN
+								dbo.Site AS s ON s.Name = staging.Site
+						WHERE	NOT EXISTS
+								(
+									SELECT	'X'
+									FROM	dbo.SiteSubnet AS x
+									WHERE	x.IPSubnet = staging.IPSubnet
+									AND		x.IPSubnetBits = staging.IPSubnetBits
+									AND		x.SiteID = s.SiteID
+								)
+																	
+						SET @RecordCount = @@ROWCOUNT
+
+						DECLARE @BusinessImportLogObject TABLE (ImportObjectID INT);
+						INSERT INTO dbo.BusinessImportLogObject (ImportID, ObjectName, ObjectType, StartDate, EndDate, Status, Processed, Created)
+						OUTPUT INSERTED.ImportObjectID INTO @BusinessImportLogObject
+						SELECT [LOG_IMPORT_ID], 'Add Subnet', null, GETDATE(), GETDATE(), 1, @RecordCount, @RecordCount
+							
+						DECLARE @ImportObjectID INT
+						SELECT @ImportObjectID = ImportObjectID FROM @BusinessImportLogObject
+
+						INSERT INTO dbo.BusinessImportLogDetail(ImportID, RecordNumber, Action, ImportObjectID, RecordDescription, Message)
+						SELECT [LOG_IMPORT_ID], ROWNUMBER, 'Created', @ImportObjectID, 'Subnet: ' + [IPSubnet] + '/' + [IPSubnetBits] + '; Site: ' + s.[Name] , NULL
+						FROM #SiteSubnet ss
+						JOIN dbo.Site AS s ON s.SiteID = ss.SiteID
+
+						/* Add Site/Subnet */
+						EXEC dbo.SiteSubnetAddBatch
+
+
+						"
+				/>
+
+				<Object	
+					Name="Add Beacon Site Subnet Mapping"
+					Type="Custom"
+					Query="	
+						IF OBJECT_ID('tempdb..#BeaconSiteSubnetMapping') IS NOT NULL
+							DROP TABLE #BeaconSiteSubnetMapping
+																			
+						DECLARE @RecordCount INT
+
+						SELECT	staging.BeaconID,
+								subnet.SubnetID,
+								staging.Site,
+								staging.Subnet,
+								staging.Beacon,
+								staging.ROWNUMBER
+						INTO	#BeaconSiteSubnetMapping
+						FROM	#ECMImport_Subnets AS staging
+						INNER JOIN
+								dbo.Site AS s ON s.Name = staging.Site
+						INNER JOIN
+								dbo.SiteSubnet AS subnet ON subnet.SiteID = s.SiteID AND subnet.IPSubnet = staging.IPSubnet AND subnet.IPSubnetBits = staging.IPSubnetBits
+						WHERE	NOT EXISTS
+								(
+									SELECT	'X'
+									FROM	dbo.BeaconSiteSubnetMapping AS x
+									WHERE	x.BeaconID = staging.BeaconID
+									AND		x.SubnetID = subnet.SubnetID
+								)
+						AND		NULLIF(staging.BeaconID, '') IS NOT NULL
+																																							
+						SET @RecordCount = @@ROWCOUNT
+						
+						DECLARE @BusinessImportLogObject TABLE (ImportObjectID INT);
+						INSERT INTO dbo.BusinessImportLogObject (ImportID, ObjectName, ObjectType, StartDate, EndDate, Status, Processed, Created)
+						OUTPUT INSERTED.ImportObjectID INTO @BusinessImportLogObject
+						SELECT [LOG_IMPORT_ID], 'Add Beacon Site Subnet Mapping', null, GETDATE(), GETDATE(), 1, @RecordCount, @RecordCount
+							
+						DECLARE @ImportObjectID INT
+						SELECT @ImportObjectID = ImportObjectID FROM @BusinessImportLogObject
+
+						INSERT INTO dbo.BusinessImportLogDetail(ImportID, RecordNumber, Action, ImportObjectID, RecordDescription, Message)
+						SELECT [LOG_IMPORT_ID], ROWNUMBER, 'Created', @ImportObjectID, 'Subnet: ' + bssm.[Subnet] + '; Site: ' + bssm.[Site] + '; Beacon: ' + bssm.[Beacon], NULL
+						FROM #BeaconSiteSubnetMapping bssm
+
+						/* Add Beacon Site/Subnet Mapping */
+						EXEC dbo.BeaconSiteSubnetMappingAddBatch
+
+						"
+				/>
+	</Import>
+  </Imports>
+</root>

@@ -1,0 +1,187 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="UserLicenseAllocations" Template="" Enabled="False" ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-UserLicenseAllocationSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" Query="select *, '' AS UserDomain, '' AS UserSAMAccountName from ['License Allocations$']" TraceActions="created,deleted,updated,rejected" TraceFields="(ISNULL([License Name], '&lt;NULL&gt;') + '/' + ISNULL([User], '&lt;NULL&gt;'))" CleanUpControlCharOn="" datatablename="#LicenseAllocations">
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+      <Object Type="Custom" Name="Extract Domain and SAMAccountName" TimeOut="-1" Query="
+UPDATE #LicenseAllocations
+SET 
+	UserDomain = LTRIM(LEFT([User],CHARINDEX('\', [User]) - 1)),
+	UserSAMAccountName = LTRIM(RIGHT([User],LEN([User]) - CHARINDEX('\', [User])))
+WHERE [User] LIKE '%\%'
+
+/* Lookup operations generate bogus validation rejections on blank values, so we force blanks to be non-blank values which won't match any records */
+UPDATE #LicenseAllocations SET UserDomain = '~' WHERE ISNULL([UserDomain], '') = ''
+UPDATE #LicenseAllocations SET UserSAMAccountName = '~' WHERE ISNULL([UserSAMAccountName], '') = ''
+
+DROP TABLE dbo.TempLicenseallocations
+SELECT *
+INTO dbo.TempLicenseallocations
+FROM #LicenseAllocations
+" />
+
+      <Object Type="Custom" Name="Validate Source Data" TimeOut="-1" Query="DECLARE @ImportObjectID INT
+EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+/* Validate operator can create records */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@IsGlobalRule = 1,
+	@ValidationRule = '
+		NOT EXISTS(
+			SELECT 1
+			FROM dbo.RightsHasAccess(''CMLicenseAlloc'', ''modify'')
+			WHERE HasAccess = 1
+		)
+	',
+	@ErrorMessage = 'You require rights to create license allocations to import this data'
+
+
+/* Validate that values are provided in mandatory columns */
+EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'License Name'
+EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'User'
+
+/* Validate list values */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.[@SourceColumn1Name@] != ''''
+		AND NOT EXISTS(
+			SELECT 1
+			FROM dbo.ResourceStringCultureType rsct
+				JOIN dbo.SoftwareLicenseExemptionReason list ON list.ResourceName = rsct.ResourceString
+			WHERE rsct.ResourceValue = source.[@SourceColumn1Name@]
+		)
+	',
+	@ErrorMessage = 'Invalid @SourceColumn1Name@ [@SourceColumn1Value@]',
+	@SourceColumn1Name = 'Exemption Reason'
+
+/* TODO: Validate that Number Allocated is numeric */
+
+/* Each source record must map to no more than one target record */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.[@SourceColumn1Name@] != ''''
+		AND (SELECT COUNT(*) FROM dbo.SoftwareLicense sl WHERE sl.Name = source.[@SourceColumn1Name@]) &gt; 1
+	',
+	@ErrorMessage = 'There are multiple existing licenses with name [@SourceColumn1Value@]: cannot identify which record to update',
+	@SourceColumn1Name = 'License Name'
+
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.[@SourceColumn1Name@] != ''''
+		AND (
+			SELECT COUNT(*) 
+			FROM dbo.ComplianceUser cu 
+				LEFT OUTER JOIN ComplianceDomain cd
+					on cd.ComplianceDomainID = cu.ComplianceDomainID
+			WHERE 
+				cu.Email = source.[@SourceColumn1Name@] 
+				OR 
+				cu.EmployeeNumber = source.[@SourceColumn1Name@]
+				OR
+				(cu.SAMAccountName = source.UserSAMAccountName AND cd.QualifiedName = source.UserDomain)
+		) &gt; 1
+	',
+	@ErrorMessage = 'There are multiple existing users with email address, employee number or domain\account name [@SourceColumn1Value@]: cannot identify which record to update',
+	@SourceColumn1Name = 'User'
+
+
+/* Execute validation rules */
+EXEC dbo.CustomAdapterValidationExecuteRules
+	@ImportObjectID = @ImportObjectID,
+	@SourceTableName = '#LicenseAllocations',
+	@TraceField = 'ISNULL([License Name], ''&lt;NULL&gt;'') + ''/'' + ISNULL([User], ''&lt;NULL&gt;'')'
+" />
+      <Object Type="License" Name="Lookup Licenses" Update="False" Create="False" OutputField="LicenseID">
+        <Property Type="name" Name="Name" Update="Do not blank" ValueType="Field Value" Value="License Name" UseForMatching="True" Length="256" />
+      </Object>
+      <Object Type="User" Name="Lookup Users by Email" Update="False" Create="False" OutputField="UserID">
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="User" UseForMatching="True" Length="200" />
+      </Object>
+      <Object Type="User" Name="Lookup Users by Employee Number" Update="False" Create="False" OutputField="UserID">
+        <Property Type="employeenumber" Name="Employee Number" Update="Do not blank" ValueType="Field Value" Value="User" UseForMatching="True" Length="128" />
+      </Object>
+      <Object Type="ComplianceDomain" Name="Lookup User Domains" Update="False" Create="False" OutputField="UserDomainID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Do not blank" ValueType="Field Value" Value="UserDomain" UseForMatching="True" Length="128" />
+      </Object>
+
+      <Object Type="Custom" Name="Extract Domain and SAMAccountName" TimeOut="-1" Query="
+/* Lookup operations generate bogus validation rejections on null domains, so we force the domain ID to be a value which won't match any records */
+UPDATE #LicenseAllocations SET UserDomainID = -1 WHERE [UserDomainID] IS NULL
+" />
+
+      <Object Type="User" Name="Lookup Users by Domain and Account Name" Update="False" Create="False" OutputField="UserID">
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="UserSAMAccountName" UseForMatching="True" Length="128" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="UserDomainID" UseForMatching="True" DataType="Integer" />
+      </Object>
+	  
+      <Object Type="Custom" Name="Validate Lookup Results" TimeOut="-1" Query="DECLARE @ImportObjectID INT
+EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Lookup Results'
+
+/* Validate license has been found */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = 'source.LicenseID IS NULL',
+	@ErrorMessage = '@SourceColumn1Name@ [@SourceColumn1Value@] could not be found',
+	@SourceColumn1Name = 'License Name'
+
+/* Validate license records to be allocated are updatable by the operator */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.LicenseID IS NOT NULL
+		AND NOT EXISTS( /* User does not have access to modify it */
+			SELECT	1
+			FROM	dbo.TableSoftwareLicenseCurrentUser(NULL, ''modify'', NULL, NULL) mod
+			WHERE	mod.SoftwareLicenseID = source.LicenseID
+		)
+	',
+	@ErrorMessage = 'You do not have rights to make changes to the existing license'
+
+/* Validate a user visible to the operator has been found for each allocation */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.[User] != ''~''
+		AND NOT EXISTS(SELECT 1 FROM dbo.ComplianceUserCurrentUser u WHERE u.ComplianceUserID = source.UserID)
+	',
+	@ErrorMessage = 'User [@SourceColumn1Value@] not found',
+	@SourceColumn1Name = 'User'
+
+/* Validate that user-based licenses are only allocated to users */
+EXEC dbo.CustomAdapterValidationRegisterRule
+	@ImportObjectID,
+	@ValidationRule = '
+		source.LicenseID IS NOT NULL
+		AND NOT EXISTS ( /* License cannot be allocated to users */
+			SELECT	1
+			FROM	dbo.SoftwareLicense sl
+				JOIN dbo.SoftwareLicenseType slt
+					ON slt.SoftwareLicenseTypeID = sl.LicenseTypeID
+					AND slt.DoesLicenseAllowUserAllocations = 1
+			WHERE	sl.SoftwareLicenseID = source.LicenseID
+		)
+	',
+	@ErrorMessage = 'License is of a type which cannot be allocated to users'
+
+
+/* Execute validation rules */
+EXEC dbo.CustomAdapterValidationExecuteRules
+	@ImportObjectID = @ImportObjectID,
+	@SourceTableName = '#LicenseAllocations',
+	@TraceField = 'ISNULL([License Name], ''&lt;NULL&gt;'') + ''/'' + ISNULL([User], ''&lt;NULL&gt;'')'
+" />
+      <Object Type="SoftwareLicenseAllocation" Name="Create Allocations to Users" Update="True" Create="True" OutputField="SoftwareAllocation_ID">
+        <Property Type="complianceuserid" Name="User ID" Update="Do not blank" ValueType="Field Value" Value="UserID" UseForMatching="True" DataType="Integer" />
+        <Property Type="softwarelicenseid" Name="License ID" Update="Do not blank" ValueType="Field Value" Value="LicenseID" UseForMatching="True" DataType="Integer" />
+        <Property Type="softwarelicenseexemptionreason" Name="Exemption Reason" ValueType="Field Value" Value="Exemption Reason" Length="1000" />
+        <Property Type="numberallocated" Name="Number allocated" Update="Do not blank" ValueType="Field Value" Value="Number Allocated" DataType="Integer" />
+      </Object>
+    </Import>
+  </Imports>
+</root>

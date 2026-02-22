@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="65" Exclude="" Action="add" FolderID="">
+    <SearchName>Applications</SearchName>
+    <Description>unknown</Description>
+    <FolderName>DASSA Views</FolderName>
+    <SearchSQL><![CDATA[
+
+]]></SearchSQL>
+  </Report>
+</CustomReports>

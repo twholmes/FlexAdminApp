@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="193" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportContractPurchases</SearchName>
+    <Description>Export FNMS Contract Purchases.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+           ci.[ContractID]
+           ,ci.[ContractName]
+           ,ci.[ContractTypeDefaultValue] as [ContractTYpe]
+           ,ci.[VendorName]
+           ,pod.[PurchaseOrderDetailID]
+           ,po.[PurchaseOrderNo]
+           ,pod.[SequenceNumber] as [POSequenceNumber]
+           ,pod.[ItemDescription] as [POItemDescription]
+           ,v.[VendorName] as [POVendorName]
+        FROM dbo.[PurchaseOrderDetail_MT] as pod
+          JOIN dbo.[ContractInfo] as ci on ci.[ContractID] = pod.ContractID
+		      JOIN dbo.[PurchaseOrder] as po on po.PurchaseOrderID = pod.PurchaseOrderID
+		      JOIN dbo.[Vendor] as v on v.VendorID = po.VendorID
+]]></SearchSQL>
+  </Report>
+</CustomReports>

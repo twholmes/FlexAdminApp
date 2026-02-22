@@ -1,0 +1,83 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="198" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportUserMemberships</SearchName>
+    <Description>Export FNMS User Enterprise Group Memberships</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate users that user is allowed access
+	CREATE TABLE #ComplianceUserAllowed (ComplianceUserID int PRIMARY KEY)
+	INSERT  #ComplianceUserAllowed SELECT * FROM TableComplianceUserCurrentUser(NULL, NULL, NULL, NULL, 1)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for users
+                	SELECT  ComplianceUser.ComplianceUserID AS [UserID],
+                        ComplianceUser.UserName AS [UserName],
+                        [ComplianceUser].SAMAccountName AS [Account],
+                        flatd.FlatName AS [FlatDomain],
+                        cd.QualifiedName AS [Domain],
+                        ComplianceUser.EmployeeNumber AS [EmployeeNumber],
+                        LocationLast.GroupName AS [LocationLast],
+                        Location.Path AS [Location],
+                        CorporateStructureLast.GroupName AS [CorporateStructureLast],
+                        CorporateStructure.Path AS [CorporateStructure],
+                        CostCenterLast.GroupName AS [CostCenterLast],
+                        CostCenter.Path AS [CostCenter],
+                        [R2_f193b3030a33bf452c08821fd1d2cf5e_UserToManager_UserID],
+                        [R2_f193b3030a33bf452c08821fd1d2cf5e_UserToManager_UserName]
+                	FROM    ComplianceUser
+                			-- Filter
+                			INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                			-- Additional joins
+                			LEFT OUTER JOIN dbo.ComplianceDomain AS flatd ON flatd.ComplianceDomainID = [ComplianceUser].ComplianceDomainID
+                        LEFT OUTER JOIN dbo.ComplianceDomain AS cd ON cd.ComplianceDomainID = [ComplianceUser].ComplianceDomainID
+                        LEFT OUTER JOIN TableGroupExByLevel(1, NULL) AS LocationLast ON ComplianceUser.LocationID = LocationLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS Location ON ComplianceUser.LocationID = Location.GroupExID
+                        LEFT OUTER JOIN TableGroupExByLevel(2, NULL) AS CorporateStructureLast ON ComplianceUser.BusinessUnitID = CorporateStructureLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS CorporateStructure ON ComplianceUser.BusinessUnitID = CorporateStructure.GroupExID
+                        LEFT OUTER JOIN TableGroupExByLevel(3, NULL) AS CostCenterLast ON ComplianceUser.CostCenterID = CostCenterLast.GroupExID
+                        LEFT OUTER JOIN GroupEx AS CostCenter ON ComplianceUser.CostCenterID = CostCenter.GroupExID
+                        -- Link from User to Manager
+                        	LEFT OUTER JOIN (
+                        			-- Custom view query for users
+                        				SELECT  ComplianceUser.ComplianceUserID AS [R2_f193b3030a33bf452c08821fd1d2cf5e_UserToManager_UserID],
+                        			        ComplianceUser.UserName AS [R2_f193b3030a33bf452c08821fd1d2cf5e_UserToManager_UserName]
+                        				FROM    ComplianceUser
+                        						-- Filter
+                        						INNER JOIN #ComplianceUserAllowed AS filter ON filter.ComplianceUserID = ComplianceUser.ComplianceUserID
+                        						-- Additional joins
+                        	) AS UserToManager ON UserToManager.R2_f193b3030a33bf452c08821fd1d2cf5e_UserToManager_UserID = ComplianceUser.ManagerID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   [UserName] LIKE '%' + words.Word + '%' ESCAPE '\'
+        )) OPTION (RECOMPILE)
+]]></SearchSQL>
+  </Report>
+</CustomReports>

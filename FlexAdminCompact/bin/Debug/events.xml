@@ -1,0 +1,41 @@
+<?xml version="1.0" standalone="yes"?>
+<Crayon>
+  <events name="ScriptRunner" updated="03/11/2019 17:00:00">
+    <BUILD enabled="False">
+      <![CDATA[
+Write-Host "Running BUILD-PROCESSING"
+      ]]>
+    </BUILD>
+    <UNPACK enabled="False">
+      <![CDATA[
+Write-Host "Running UNPACK-PROCESSING"
+      ]]>
+    </UNPACK>
+    <DROP enabled="False">
+      <![CDATA[
+param (
+  [string]$arg1 = "*.*"
+)
+$ScriptPath = Split-Path (Get-Variable MyInvocation -Scope 0).Value.MyCommand.Path
+
+# Mainline: demo script
+dir $($arg1)
+      ]]>
+    </DROP>
+    <PRE enabled="False">
+      <![CDATA[
+Write-Host "Running PRE-PROCESSING"
+      ]]>
+    </PRE>    
+    <POST enabled="False">
+      <![CDATA[
+Write-Host "Running POST-PROCESSING"
+      ]]>
+    </POST>    
+    <EXIT enabled="False">
+      <![CDATA[
+Write-Host "Running EXIT-PROCESSING"
+      ]]>
+    </EXIT>
+  </events>
+</Crayon>

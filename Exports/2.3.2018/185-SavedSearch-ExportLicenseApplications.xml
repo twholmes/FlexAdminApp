@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="185" Exclude="" Action="add" FolderID="">
+    <SearchName>ExportLicenseApplications</SearchName>
+    <Description>Export FNMS License Applications.</Description>
+    <FolderName>Exports</FolderName>
+    <SearchSQL><![CDATA[
+SELECT
+         slwa.[SoftwareLicenseID]
+         ,slwa.[LicenseName]
+         ,slwa.[LicenseTypeID]
+         ,slwa.[LicenseTypeName]
+         ,slwa.[IsTrueUpLicense]
+         ,slwa.[SoftwareTitleID]
+         ,slwa.[Application]
+         ,sti.[SoftwareTitleVersion]
+         ,sti.[EditionName]
+         ,sti.[FlexeraID]
+         ,sti.SoftwareTitleProductID
+         ,sti.[ProductName]
+         ,slwa.[Purchased]
+         ,slwa.[IsSelected]      
+       FROM dbo.[SoftwareLicenseWithApplication] as slwa
+         JOIN dbo.SoftwareTitleInfo as sti on sti.SoftwareTitleID = slwa.SoftwareTitleID
+]]></SearchSQL>
+  </Report>
+</CustomReports>

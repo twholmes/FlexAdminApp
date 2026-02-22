@@ -1,0 +1,84 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="1" Exclude="" Action="add" FolderID="">
+    <SearchName>Unbundled IBM Product Installs</SearchName>
+    <Description>This report lists application installs that have replaced by ARL processing of Suites and Apllication Precedence.</Description>
+    <FolderName>Other</FolderName>    
+    <SearchSQL>
+      <![CDATA[
+       ;WITH DATA AS 
+       (
+         SELECT * FROM
+         (
+           SELECT 
+             cc.ComputerName, 
+             stpin.ProductName,
+             stpuin.PublisherName,
+             stin.FullName AS 'DiscoveredApplication', 
+             stin.SoftwareTitleID, 
+             stpin.ProductName as ReplacedProduct,
+             stpuin.PublisherName as ReplacedPublisher,
+             strp.FullName AS 'ReplacedAppliction',
+             'Precedence' AS 'Rule'
+           FROM 
+             dbo.InstalledSoftwareRemoval isr
+             join dbo.InstalledSoftware isft ON isr.InstalledSoftwareID = isft.InstalledSoftwareID
+             join dbo.SoftwareTitle stin ON isft.SoftwareTitleID = stin.SoftwareTitleID
+             join dbo.SoftwareTitleProduct stpin ON stin.SoftwareTitleProductID = stpin.SoftwareTitleProductID
+             join dbo.SoftwareTitlePublisher stpuin ON stpin.SoftwareTitlePublisherID = stpuin.SoftwareTitlePublisherID
+ 
+             join dbo.SoftwareTitle strp ON isr.RemovedSoftwareTitleID = strp.SoftwareTitleID
+             join dbo.SoftwareTitleProduct strpp ON strp.SoftwareTitleProductID = strpp.SoftwareTitleProductID
+             join dbo.SoftwareTitlePublisher strppu ON strpp.SoftwareTitlePublisherID = strppu.SoftwareTitlePublisherID
+ 
+             join dbo.ComplianceComputer AS cc ON cc.ComplianceComputerID = isft.ComplianceComputerID
+
+           UNION
+
+           SELECT 
+             cc.ComputerName, 
+             stpin.ProductName,
+             stpuin.PublisherName,
+             stin.FullName AS 'DiscoveredApplication', 
+             stin.SoftwareTitleID, 
+             stpin.ProductName as ReplacedProduct,
+             stpuin.PublisherName as ReplacedPublisher,
+             strp.FullName AS 'ReplacedAppliction',
+             'Suite' AS 'Rule'
+           FROM 
+             dbo.InstalledSoftwareReplacement isr
+             join dbo.InstalledSoftware isft ON isr.InstalledSoftwareID = isft.InstalledSoftwareID
+             join dbo.SoftwareTitle stin ON isft.SoftwareTitleID = stin.SoftwareTitleID
+             join dbo.SoftwareTitleProduct stpin ON stin.SoftwareTitleProductID = stpin.SoftwareTitleProductID
+             join dbo.SoftwareTitlePublisher stpuin ON stpin.SoftwareTitlePublisherID = stpuin.SoftwareTitlePublisherID
+
+             join dbo.SoftwareTitle strp ON isr.ReplacedSoftwareTitleID = strp.SoftwareTitleID
+             join dbo.SoftwareTitleProduct strpp ON strp.SoftwareTitleProductID = strpp.SoftwareTitleProductID
+             join dbo.SoftwareTitlePublisher strppu ON strpp.SoftwareTitlePublisherID = strppu.SoftwareTitlePublisherID
+
+             join dbo.ComplianceComputer AS cc ON cc.ComplianceComputerID = isft.ComplianceComputerID
+             
+         ) AS query
+       )
+
+       SELECT
+         d.ComputerName, 
+         /* d.PublisherName, */
+         d.ProductName,
+         d.DiscoveredApplication, 
+         /* d.SoftwareTitleID, */
+         /* d.ReplacedPublisher, */
+         d.ReplacedProduct, 
+         d.ReplacedAppliction
+         /* d.[Rule] */
+       FROM 
+         DATA d
+       WHERE
+         d.PublisherName like '%IBM%' and d.[Rule] like 'Suite'
+      ]]>
+    </SearchSQL>
+    <SearchColumns>
+      ComputerName,ProductName,DiscoveredApplication,ReplacedProduct,ReplacedAppliction
+    </SearchColumns>          
+  </Report>
+</CustomReports>

@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="OperatorRoles" Template="" Enabled="False" 
+      ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=OperatorRoles-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=1'" 
+      Query="SELECT * FROM [OperatorRoles$]" 
+      TraceActions="created,deleted,updated,rejected" 
+      TraceFields="OperatorLogin" 
+      CleanUpControlCharOn=""
+      UsePhysicalTable="True"
+      DataTableName="dbo.ECMImport_OperatorRoles"      
+      >
+
+      <Log Name="Log" Output="File" LogLevel="Debug" Content="All" FileName="Import-[IMPORT NAME]_[DATE][TIME].log" />
+
+      <Object Type="ComplianceOperator" Name="Find Operator" Update="False" Create="False" OutputField="OperatorOutID">
+        <Property Type="operatorlogin" Name="Account" Update="Never" ValueType="Field Value" Value="OperatorLogin" UseForMatching="True" Length="256" />
+      </Object>
+
+      <Object Type="ComplianceOperatorRole" Name="Find Operator Role" Update="False" Create="False" OutputField="OperatorRoleID">
+        <Property Type="compliancerole" Name="Role" Update="Never" ValueType="Field Value" Value="RoleName" UseForMatching="True" Length="64" />
+        <Property Type="targetid" Name="Operator ID" Update="Never" ValueType="Field Value" Value="OperatorOutID" UseForMatching="True" />
+      </Object>
+
+      <Object Type="Custom" Name="Seperate Deletes" Comments="This query taked a copy of the import table and seperates the deletels and removes" TimeOut="-1" Query="
+      	IF EXISTS(SELECT 1 FROM dbo.sysobjects WHERE id = object_id('dbo.ECMImport_OperatorRoleDeletes') AND OBJECTPROPERTY(id, 'IsTable') = 1)
+      	  DROP TABLE dbo.[ECMImport_OperatorRoleDeletes]
+      	
+        SELECT * 
+        INTO dbo.[ECMImport_OperatorRoleDeletes]
+        FROM dbo.[ECMImport_OperatorRoles]
+        WHERE [DeleteOperator] = 1 or [RemoveOperatorRole] = 1     
+
+        DELETE dbo.[ECMImport_OperatorRoles]
+        WHERE [DeleteOperator] = 1
+        
+        DELETE dbo.[ECMImport_OperatorRoles]
+        WHERE [RemoveOperatorRole] = 1      
+      " />     
+
+      <Object Type="ComplianceOperator" Name="Update Operator" Update="True" Create="True" OutputField="OperatorOutID">
+        <Property Type="operatorlogin" Name="Account" Update="Never" ValueType="Field Value" Value="OperatorLogin" UseForMatching="True" Length="256" />
+        <Property Type="operatorname" Name="Full Name" Update="Do not blank" ValueType="Field Value" Value="OperatorName" Length="512" />
+        <Property Type="isenabled" Name="Enabled" Update="Do not blank" ValueType="Field Value" Value="IsEnabled" />
+        <Property Type="email" Name="Email" Update="Do not blank" ValueType="Field Value" Value="Email" Length="200" />
+      </Object>
+
+      <!--<Object Type="ComplianceOperatorRole" Name="Link Operator Role" Update="False" Create="True" UpdateRule="RemoveExtraOperatorsFromRoles" OutputField="LinkOperatorRoleOutID"> -->
+      <Object Type="ComplianceOperatorRole" Name="Link Operator Role" Update="False" Create="True" OutputField="LinkOperatorRoleID">
+        <Property Type="compliancerole" Name="Role" Update="Never" ValueType="Field Value" Value="RoleName" UseForMatching="True" Length="64" />
+        <Property Type="targetid" Name="Operator ID" Update="Never" ValueType="Field Value" Value="OperatorOutID" UseForMatching="True" />
+      </Object>
+      
+      <Object Type="Custom" Name="Set Global Operators" Comments="This query will remove the memberships of any roles that were not considered by the Link Operator - Role step.  This is required to cater for the case where the Active Directory group(s) that match an FNMS role have no members at all. " TimeOut="-1" Query="
+        UPDATE op 
+			  SET op.GlobalOperator = 1        
+        FROM dbo.[ComplianceOperator] AS op
+          JOIN dbo.[ECMImport_OperatorRoles] AS ecm ON ecm.OperatorOutID = op.ComplianceOperatorID
+      " />
+
+      <Object Type="Custom" Name="Delete Operators" Comments="This query will delete selected Operator records" TimeOut="-1" Query="
+        DELETE op
+        FROM dbo.[ComplianceOperator] AS op
+          JOIN dbo.[ECMImport_OperatorRoleDeletes] AS ecm ON ecm.[OperatorLogin] like op.OperatorLogin and ecm.[DeleteOperator] = 1
+      " />     
+
+      <Object Type="Custom" Name="Remove Operator Role" Comments="This query will remove selected roles from Operator records" TimeOut="-1" Query="
+        DELETE mx
+        FROM [dbo].[MemberEx_MT] as mx
+          JOIN [dbo].[GroupEx_MT] as gx on gx.GroupID = mx.GroupID
+          JOIN [dbo].[ECMImport_OperatorRoleDeletes] as ecm on ecm.OperatorOutID = mx.TargetID and ecm.Roleoutid1 = mx.GroupID and ecm.RemoveOperatorRole = 1       
+        /* WHERE ecm.[RemoveOperatorRole] = 1 */
+      " />     
+      
+      <!--
+      <Object Type="Custom" Name="Remove Role Memberships" Comments="This query will remove the memberships of any roles that were not considered by the Link Operator - Role step.  This is required to cater for the case where the Active Directory group(s) that match an FNMS role have no members at all. " TimeOut="-1" Query="
+        DELETE m 
+        FROM [dbo].[MemberEx_MT] m 
+                CROSS APPLY [dbo].[TableFilterHybrid_MT](TenantID)  
+                JOIN dbo.ComplianceOperator co 
+                        ON co.ComplianceOperatorID = m.TargetID 
+                JOIN dbo.[GroupEx] ge 
+                        ON ge.GroupTypeID = 5 
+						AND ge.GroupID = m.GroupID 
+						AND NOT EXISTS ( 
+							SELECT 1 
+							FROM dbo.[ECMImport_OperatorRoles] aori 
+							WHERE aori.RoleName = ge.GroupCN 
+								AND aori.Member = co.OperatorLogin 
+						) 
+						AND ge.NameResourceName IS NULL /* only custom roles */
+        WHERE m.TargetTypeID = 16 
+			AND ge.BusinessView = 0
+			AND FilteredID = 1 
+      " />
+    -->
+
+    </Import>
+  </Imports>
+</root>

@@ -1,0 +1,468 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <ManageSoft connectiontype="ecm" runintransaction="False" />
+  <Imports>
+    <Import Type="Excel" Name="PurchasesSpreadsheet" Template="" Enabled="False" ConnectionString="Provider=Microsoft.ACE.OLEDB.12.0;Data Source=FNMS-PurchasesSpreadsheet-Template.xlsx;Extended Properties='Excel 12.0 Xml;HDR=Yes;IMEX=0'" 
+      Query="
+SELECT 
+  *
+  ,'' AS RequestorDomain
+  ,'' AS RequestorSAMAccountName
+  ,'' AS AuthorizedByDomain
+  ,'' AS AuthorizedBySAMAccountName
+  ,'' AS ProcessedByDomain
+  ,'' AS ProcessedBySAMAccountName
+FROM ['Purchase Orders$']
+WHERE 
+  [PO Number] IS NOT NULL
+  OR
+  [PO Line Number] IS NOT NULL" 
+  TraceActions="created,deleted,updated,rejected" 
+  TraceFields="[PO Number]/[PO Line Number]" 
+  UsePhysicalTable="True" 
+  datatablename="dbo.ECMImport_Purchases"
+  >
+  
+      <Log Name="NewLog" Output="File" LogLevel="Debug" Content="All" FileName="C:\LogFiles\PurchasesSpreadsheet_[DATE]_[TIME].log" />
+      
+      <Object Type="Custom" Name="Add Columns" Query="      
+      IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'ECMImport_Purchases' AND column_name = 'RequestDateTime')
+      ALTER TABLE dbo.[ECMImport_Purchases] ADD [RequestDateTime] DateTime
+      "/>
+       
+      <Object Type="Custom" Name="Extract Domain and SAMAccountName" TimeOut="-1" Query="
+/* Where there is no domain set the SAM Account Name fields to be the same as the user */
+UPDATE ECMImport_Purchases
+SET 
+  RequestorSAMAccountName = ISNULL(CASE WHEN [Requestor] NOT LIKE '%\%' THEN [Requestor] ELSE '' END,''),
+  AuthorizedBySAMAccountName = ISNULL(CASE WHEN [Authorized By] NOT LIKE '%\%' THEN [Authorized By] ELSE '' END,''),
+  ProcessedBySAMAccountName = ISNULL(CASE WHEN [Processed By] NOT LIKE '%\%' THEN [Processed By] ELSE '' END,'')
+
+/* Where there is a domain, split it and set the domain and SAM Acount Name fields */
+UPDATE ECMImport_Purchases
+SET 
+  RequestorDomain = LTRIM(LEFT([Requestor],CHARINDEX('\', [Requestor]) - 1)),
+  RequestorSAMAccountName = LTRIM(RIGHT([Requestor],LEN([Requestor]) - CHARINDEX('\', [Requestor])))
+WHERE [Requestor] LIKE '%\%'
+
+UPDATE ECMImport_Purchases
+SET 
+  AuthorizedByDomain = LTRIM(LEFT([Authorized By],CHARINDEX('\', [Authorized By]) - 1)),
+  AuthorizedBySAMAccountName = LTRIM(RIGHT([Authorized By],LEN([Authorized By]) - CHARINDEX('\', [Authorized By])))
+WHERE [Authorized By] LIKE '%\%'
+
+UPDATE ECMImport_Purchases
+SET 
+  ProcessedByDomain = LTRIM(LEFT([Processed By],CHARINDEX('\', [Processed By]) - 1)),
+  ProcessedBySAMAccountName = LTRIM(RIGHT([Processed By],LEN([Processed By]) - CHARINDEX('\', [Processed By])))
+WHERE [Processed By] LIKE '%\%'
+      "/>
+      
+      <Object Type="Custom" Name="Set NULL Defaults" TimeOut="-1" Query="
+UPDATE ECMImport_Purchases
+SET [RequestDateTime] = ISNULL([Request date], [Date])
+      "/> 
+  
+      <Object Type="Custom" Name="Validate Source Data" TimeOut="-1" Query="
+DECLARE @ImportObjectID INT
+EXEC @ImportObjectID = dbo.CustomAdapterValidationStartRules [LOG_IMPORT_ID], 'Validate Source Data'
+
+DECLARE @Rule nvarchar(MAX)
+DECLARE @ErrorMsg nvarchar(256)
+
+/* Validate operator can create records */
+SET @ErrorMsg = 'You require rights to create purchases to import this data'
+SET @Rule = '
+  NOT EXISTS(
+    SELECT 1
+    FROM dbo.RightsHasAccess(''CMPurchaseOrders'', ''create'')
+    WHERE HasAccess = 1
+  )
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, NULL, NULL, 1
+
+
+/* Validate that the column types are set correctly */
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'PO Number', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'PO Line Number', 'int'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Description', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Date', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Qty', 'int'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Qty Per Unit', 'int'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Unit Price', 'float'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'SKU', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Invoice Number', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Invoice Date', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Effective Date', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Expiry Date', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Contract Number', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Publisher', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Vendor', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Location', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Cost Center', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Corporate Unit', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Purchase Type', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Request number', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'RequestDateTime', 'date'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Requestor', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Authorized by', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Processed by', 'text'
+EXEC dbo.CustomVerifyColumnTypeForAdapterImport @ImportObjectID, 'ECMImport_Purchases', 'Comments', 'text'
+
+/* Validate that values are provided in mandatory columns */
+EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'PO Number'
+EXEC dbo.CustomAdapterValidationRuleRequired @ImportObjectID, 'PO Line Number'
+
+/* Validate that values are provided in mandatory on creation columns */
+SET @ErrorMsg = 'Column [@SourceColumn1Name@] is mandatory when creating a new purchase'
+SET @Rule = '
+  source.[PO Number] != ''''
+  AND source.[PO Line Number] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.PurchaseOrder po
+      JOIN dbo.PurchaseOrderDetail pod
+        ON pod.PurchaseOrderID = po.PurchaseOrderID
+    WHERE 
+      po.PurchaseOrderNo = source.[PO Number]
+      AND
+      pod.SequenceNumber = source.[PO Line Number]
+  ) 
+  AND ISNULL(source.[@SourceColumn1Name@],'''') = ''''
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg,'PO Number'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'PO Line Number'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Description'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Date'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Qty'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Qty Per Unit'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Vendor'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Purchase Type'
+
+
+/* Validate the Vendor and Publisher */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] does not match any Vendor records'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.Vendor v
+    WHERE v.VendorName = source.[@SourceColumn1Name@]
+  )
+'
+/* EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Publisher' */
+/* EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Vendor' */
+
+/* Validate that the Vendor is 64 characters or less */ 
+DECLARE @RuleTemplate nvarchar(MAX)
+DECLARE @ErrorMsgTemplate nvarchar(256) 
+
+SET @ErrorMsgTemplate = 'The @SourceColumn1Name@ must be @ColLength@ characters or less'
+SET @RuleTemplate = '
+  LEN([@SourceColumn1Name@]) &gt; @ColLength@
+' 
+SET @ErrorMsg = REPLACE(@ErrorMsgTemplate, '@ColLength@', '64')
+SET @Rule = REPLACE(@RuleTemplate, '@ColLength@', '64')
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Vendor', NULL, 0
+
+/* Validate the Contract Number */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] does not match any Contract records'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.Contract c
+    WHERE c.ContractNo = source.[@SourceColumn1Name@]
+  )
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Contract Number'
+
+SET @ErrorMsg = 'There are multiple existing contracts that match the contract number [@SourceColumn1Value@]: cannot identify which record to update'
+SET @Rule = '
+    source.[@SourceColumn1Name@] != ''''
+    AND (
+      SELECT COUNT(*) 
+      FROM dbo.Contract c 
+      WHERE 
+        c.ContractNo = source.[@SourceColumn1Name@] 
+    ) &gt; 1
+  '
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Contract Number'
+
+
+/* Validate Boolean types */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] should be TRUE, FALSE or be left blank'
+SET @Rule = '
+  CONVERT(NVARCHAR, source.[@SourceColumn1Name@]) NOT IN (''TRUE'', ''FALSE'', ''0'', ''1'', '''')
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Maintenance'
+
+
+/* Validate Purchase Type */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in column [@SourceColumn1Name@] is not a recognised purchase type'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.PurchaseOrderDetailTypeI18N podt
+    WHERE podt.DefaultValue = source.[@SourceColumn1Name@]
+  )
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Purchase Type'
+
+
+/* Validate Enterprise Groups */
+SET @ErrorMsg = 'The value [@SourceColumn1Value@] in not a recognised @SourceColumn1Name@'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dbo.GroupEx g
+      JOIN dbo.GroupTypeI18N gt
+        ON gt.GroupTypeID = g.GroupTypeID
+    WHERE gt.DefaultValue = ''@SourceColumn1Name@''
+      AND g.[Path] = CONVERT(NVARCHAR, source.[@SourceColumn1Name@])
+  )
+'
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Location'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Corporate Unit'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Cost Center'
+
+/* Validate Users */
+SET @ErrorMsg = 'Could not find any existing users in FNMS with a domain\account name matching [@SourceColumn1Value@\@SourceColumn2Value@]'
+SET @Rule = '
+    (
+      source.[@SourceColumn1Name@] != ''''
+      OR
+      source.[@SourceColumn2Name@] != ''''
+    )
+    AND NOT EXISTS (
+      SELECT 1 
+      FROM dbo.ComplianceUser cu 
+        LEFT OUTER JOIN ComplianceDomain cd
+          on cd.ComplianceDomainID = cu.ComplianceDomainID
+      WHERE 
+        cu.SAMAccountName = source.[@SourceColumn2Name@] 
+        AND 
+        cd.QualifiedName = source.[@SourceColumn1Name@]
+    )
+  '
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'RequestorDomain', 'RequestorSAMAccountName'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'AuthorizedByDomain', 'AuthorizedBySAMAccountName'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ProcessedByDomain', 'ProcessedBySAMAccountName'
+
+
+SET @ErrorMsg = 'There are multiple existing users with domain\account name [@SourceColumn1Value@\@SourceColumn2Value@]: cannot identify which record to update'
+SET @Rule = '
+    source.[@SourceColumn1Name@] != ''''
+    AND (
+      SELECT COUNT(*) 
+      FROM dbo.ComplianceUser cu 
+        LEFT OUTER JOIN ComplianceDomain cd
+          on cd.ComplianceDomainID = cu.ComplianceDomainID
+      WHERE 
+        cu.SAMAccountName = source.[@SourceColumn2Name@] 
+        AND 
+        cd.QualifiedName = source.[@SourceColumn1Name@]
+    ) &gt; 1
+  '
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'RequestorDomain', 'RequestorSAMAccountName'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'AuthorizedByDomain', 'AuthorizedBySAMAccountName'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'ProcessedByDomain', 'ProcessedBySAMAccountName'
+
+
+/* Each source record must map to no more than one target record */
+
+SET @ErrorMsg = 'There is more than one Purchase in FNMS with a PO Number [@SourceColumn1Value@] and PO Line Number [@SourceColumn2Value@]'
+SET @Rule = '
+  (
+    SELECT COUNT(*)
+    FROM dbo.PurchaseOrder po
+      JOIN dbo.PurchaseOrderDetail pod
+        ON pod.PurchaseOrderID = po.PurchaseOrderID
+    WHERE 
+      po.PurchaseOrderNo = source.[@SourceColumn1Name@]
+      AND
+      pod.SequenceNumber = source.[@SourceColumn2Name@]
+  ) &gt; 1
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'PO Number', 'PO Line Number'
+
+/* There may be only one of each source record */
+SET @ErrorMsg = 'There is more than one Purchase record in the spreadsheet with a PO Number [@SourceColumn1Value@] and PO Line Number [@SourceColumn2Value@]'
+SET @Rule = '
+  (
+    SELECT COUNT(*)
+    FROM ECMImport_Purchases p
+    WHERE 
+      p.[PO Number] = source.[PO Number]
+      AND
+      p.[PO Line Number] = source.[PO Line Number]
+  ) &gt; 1
+'
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'PO Number', 'PO Line Number'
+
+/* Currency Code validation rules */
+SET @ErrorMsg = 'There are no active currencies that match the @SourceColumn1Name@ column value ''@SourceColumn1Value@''.'
+SET @Rule = '
+  NOT EXISTS (
+    SELECT 1
+    FROM dbo.Currency upc
+      INNER JOIN dbo.CurrencyRate upcr ON upcr.CurrencyID = upc.CurrencyID
+      INNER JOIN dbo.CurrencyRateSnapshot upcrs ON upcrs.CurrencyRateSnapshotID = upcr.SnapshotID
+    WHERE upc.IsActive = 1
+      AND upc.CurrencyCode = source.[@SourceColumn1Name@]
+  )
+  AND source.[@SourceColumn1Name@] != ''''
+'
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Unit Price Currency'
+
+SET @ErrorMsg = 'The @SourceColumn1Name@ column has a value but no currency is specified in the @SourceColumn2Name@ column.'
+SET @Rule = '
+  source.[@SourceColumn1Name@] != ''''
+  AND (source.[@SourceColumn2Name@] IS NULL OR source.[@SourceColumn2Name@] = '''')
+'
+
+EXEC dbo.CustomAdapterValidationRegisterRule @ImportObjectID, @Rule, @ErrorMsg, 'Unit Price', 'Unit Price Currency'   
+
+
+/* Execute validation rules */
+EXEC dbo.CustomAdapterValidationExecuteRules
+  @ImportObjectID = @ImportObjectID,
+  @SourceTableName = 'ECMImport_Purchases',
+  @TraceField = 'ISNULL(CONVERT(NVARCHAR,[PO Number]), ''&lt;NULL&gt;'') + ''/'' + ISNULL(CONVERT(NVARCHAR,[PO Line Number]), ''&lt;NULL&gt;'')'
+" />
+
+      <Object Type="Location" Name="Location" Update="False" Create="False" OutputField="locationoutid">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Location" UseForMatching="True" RegexSplit="/" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="locationoutid" UseForMatching="True" MatchingMode="like" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="CorporateUnit" Name="Corporate Unit" Update="False" Create="False" OutputField="businessunitoutid">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Corporate Unit" UseForMatching="True" RegexSplit="/" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="businessunitoutid" UseForMatching="True" MatchingMode="like" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="CostCenter" Name="Cost Center" Update="False" Create="False" OutputField="costcenteroutid">
+        <Property Type="groupcn" Name="Name" Update="Never" ValueType="Field Value" Value="Cost Center" UseForMatching="True" RegexSplit="/" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="groupexid" Name="ID" Update="Never" ValueType="Field Value" Value="costcenteroutid" UseForMatching="True" MatchingMode="like" UseNullValueForMatching="RemoveProperty" />
+      </Object>
+      
+      <Object Type="Vendor" Name="Vendor" Update="False" Create="True" OutputField="vendoroutid">
+        <Property Type="vendorname" Name="Name" Update="Never" ValueType="Field Value" Value="Vendor" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="Vendor" Name="Publisher" Update="False" Create="True" OutputField="publisheroutid">
+        <Property Type="vendorname" Name="Name" Update="Never" ValueType="Field Value" Value="Publisher" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="Contract" Name="Contract" Update="False" Create="False" OutputField="contractoutid">
+        <Property Type="contractno" Name="Contract Number" Update="Never" ValueType="Field Value" Value="Contract Number" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="ComplianceDomain" Name="RequestorDomain" Update="False" Create="False" OutputField="RequestorDomain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="RequestorDomain" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="User" Name="Requestor" Update="False" Create="False" OutputField="RequestorUser_ID">
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="RequestorSAMAccountName" UseForMatching="True" Length="64" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="RequestorDomain_ID" UseForMatching="True" DataType="Integer" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="ComplianceDomain" Name="AuthorizedByDomain" Update="False" Create="False" OutputField="AuthorizedByDomain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="AuthorizedByDomain" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="User" Name="Authorized by" Update="False" Create="False" OutputField="AuthorizedByUser_ID">
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="AuthorizedBySAMAccountName" UseForMatching="True" Length="64" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="AuthorizedByDomain_ID" UseForMatching="True" DataType="Integer" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="ComplianceDomain" Name="ProcessedByDomain" Update="False" Create="False" OutputField="ProcessedByDomain_ID">
+        <Property Type="qualifiedname" Name="Qualified Name" Update="Never" ValueType="Field Value" Value="ProcessedByDomain" UseForMatching="True" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="User" Name="Processed by" Update="False" Create="False" OutputField="ProcessedByUser_ID">
+        <Property Type="samaccountname" Name="Account Name" Update="Do not blank" ValueType="Field Value" Value="ProcessedBySAMAccountName" UseForMatching="True" Length="64" UseNullValueForMatching="SetPropertyToNull" />
+        <Property Type="compliancedomainid" Name="Domain ID" Update="Do not blank" ValueType="Field Value" Value="ProcessedByDomain_ID" UseForMatching="True" DataType="Integer" UseNullValueForMatching="SetPropertyToNull" />
+      </Object>
+      
+      <Object Type="PurchaseOrder" Name="Purchase Order" Update="True" Create="True" OutputField="purchaseorderoutid">
+        <Property Type="purchaseorderno" Name="Purchase Order No" ValueType="Field Value" Value="Request number" UseForMatching="True" />
+        <Property Type="purchaseorderdate" Name="Purchase Date" Update="Do not blank" ValueType="Field Value" Value="Date" />
+        <Property Type="vendorid" Name="Vendor ID" Update="Do not blank" ValueType="Field Value" Value="vendoroutid" OnMissingFieldValue="Remove Property" />
+      </Object>
+      
+      <Object Type="PurchaseOrderLine" Name="Purchase Order Line" Update="True" Create="True" OutputField="purchaseorderdetailoutid">
+        <Property Type="purchaseorderid" Name="Purchase Order ID" ValueType="Field Value" Value="purchaseorderoutid" UseForMatching="True" />
+        <Property Type="sequencenumber" Name="Purchase Order Line Sequence" ValueType="Field Value" Value="PO Line Number" UseForMatching="True" />
+        <Property Type="purchaseorderdetailtype" Name="Purchase Type" Update="Do not blank" ValueType="Field Value" Value="Purchase Type" OnMissingFieldValue="Remove Property" />
+        <Property Type="itemdescription" Name="Description" Update="Do not blank" ValueType="Field Value" Value="Description" OnMissingFieldValue="Remove Property" />
+        <Property Type="licensepartno" Name="Part No/SKU" Update="Do not blank" ValueType="Field Value" Value="SKU" OnMissingFieldValue="Remove Property" />
+        <Property Type="publisherid" Name="Publisher ID" Update="Do not blank" ValueType="Field Value" Value="publisheroutid" OnMissingFieldValue="Remove Property" />
+        <Property Type="quantity" Name="Purchase Quantity" Update="Do not blank" ValueType="Field Value" Value="Qty" OnMissingFieldValue="Remove Property" />
+        <Property Type="quantityperunit" Name="Quantity Per Unit" Update="Do not blank" ValueType="Field Value" Value="Qty Per Unit" OnMissingFieldValue="Remove Property" />
+        <Property Type="unitprice" Name="Unit Price" Update="Do not blank" ValueType="Field Value" Value="Unit Price" OnMissingFieldValue="Remove Property" />
+        <Property Type="contractid" Name="Contract ID" Update="Do not blank" ValueType="Field Value" Value="contractoutid" OnMissingFieldValue="Remove Property" />
+        <Property Type="requestno" Name="Request Number" Update="Do not blank" ValueType="Field Value" Value="Request number" OnMissingFieldValue="Remove Property" />
+        <Property Type="requestdate" Name="Request Date" Update="Do not blank" ValueType="Field Value" Value="RequestDateTime" OnMissingFieldValue="Remove Property" />
+        <Property Type="invoiceno" Name="Invoice Number" Update="Do not blank" ValueType="Field Value" Value="Invoice Number" OnMissingFieldValue="Remove Property" />
+        <Property Type="invoicedate" Name="Invoice Date" Update="Do not blank" ValueType="Field Value" Value="Invoice Date" OnMissingFieldValue="Remove Property" />
+        <Property Type="locationid" Name="Location ID" Update="Do not blank" ValueType="Field Value" Value="locationoutid" OnMissingFieldValue="Remove Property" />
+        <Property Type="businessunitid" Name="Corporate Unit ID" Update="Do not blank" ValueType="Field Value" Value="businessunitoutid" OnMissingFieldValue="Remove Property" />
+        <Property Type="costcenterid" Name="Cost Center ID" Update="Do not blank" ValueType="Field Value" Value="costcenteroutid" OnMissingFieldValue="Remove Property" />
+        <Property Type="comments" Name="Comments" Update="Do not blank" ValueType="Field Value" Value="Comments" OnMissingFieldValue="Remove Property" />
+        <Property Type="requestedbyid" Name="Requestor ID" Update="Do not blank" ValueType="Field Value" Value="RequestorUser_ID" DataType="Integer" />
+        <Property Type="authorizedbyid" Name="Authorized By ID" Update="Do not blank" ValueType="Field Value" Value="AuthorizedByUser_ID" DataType="Integer" />
+        <Property Type="processedbyid" Name="Processed By ID" Update="Do not blank" ValueType="Field Value" Value="ProcessedByUser_ID" DataType="Integer" />
+        <Property Type="maintenanceorserviceagreement" Name="Include Support, Maintenance or Service Agreement" Update="Do not blank" ValueType="Field Value" Value="Maintenance" />
+        <Property Type="effectivedate" Name="Effective Date" Update="Do not blank" ValueType="Field Value" Value="Effective Date" DataType="Date" />
+        <Property Type="expirydate" Name="Expiry Date" Update="Do not blank" ValueType="Field Value" Value="Expiry Date" DataType="Date" />
+        <Property Type="custompurchasepropertyanuponumber" Name="ANU PO Number" Update="Do not blank" ValueType="Field Value" Value="PO Number" Length="512" IsCustomField="True" />        
+      </Object>
+      
+      <Object Type="Custom" Name="Update Unit Price Currency Rate" TimeOut="20000" Query="  
+        IF NOT EXISTS ( SELECT 1 FROM ECMImport_Purchases ) RETURN
+
+        DECLARE @CurrentDate DATETIME
+        SET @CurrentDate = GETDATE()
+
+        ; WITH Rate AS (
+          SELECT TOP 1 WITH TIES
+            pod.PurchaseOrderDetailID, 
+            upcr.CurrencyRateID,
+            p.[Unit Price],
+            ROW_NUMBER() OVER(PARTITION BY pod.PurchaseOrderDetailID ORDER BY upcrs.SnapshotDate DESC) AS Ranking
+          FROM dbo.PurchaseOrderDetail pod
+            INNER JOIN dbo.PurchaseOrder po
+              ON po.PurchaseOrderID = pod.PurchaseOrderID
+            INNER JOIN ECMImport_Purchases p
+              ON pod.PurchaseOrderDetailID = p.purchaseorderdetailoutid
+            /* Use the most recent exchange rate on or prior to the PO date (as long as the currency is enabled) */
+            INNER JOIN (
+              dbo.Currency upc
+              INNER JOIN dbo.CurrencyRate upcr 
+                ON upcr.CurrencyID = upc.CurrencyID
+              INNER JOIN dbo.CurrencyRateSnapshot upcrs 
+                ON upcrs.CurrencyRateSnapshotID = upcr.SnapshotID
+              INNER JOIN dbo.ComplianceSetting dc
+                ON dc.SettingName = 'DefaultCurrency'
+                  AND CAST(dc.SettingValue AS INT) = upcrs.SnapshotReferenceCurrencyID
+            ) ON upc.CurrencyCode = p.[Unit Price Currency]
+              AND po.PurchaseOrderDate &gt;= ISNULL(upcrs.SnapshotDate, po.PurchaseOrderDate)
+              AND upc.IsActive = 1
+          ORDER BY Ranking
+        )
+        UPDATE pod
+        SET UnitPriceRateID = Rate.CurrencyRateID
+        FROM dbo.PurchaseOrderDetail pod
+          JOIN Rate ON Rate.PurchaseOrderDetailID = pod.PurchaseOrderDetailID
+        WHERE NOT (ISNULL(Rate.[Unit Price], '') = '')
+      " />
+    </Import>
+  </Imports>
+</root>

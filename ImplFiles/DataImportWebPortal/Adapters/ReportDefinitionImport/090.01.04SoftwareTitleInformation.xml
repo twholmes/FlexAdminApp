@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7198" SearchName="090.01.04 Software Title Information" ComplianceSearchType="Custom" ComplianceSearchFolderID="2862" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Functionality with reporting advising Software approaching End Of Life (EOL) and current commercial available software version</Description>
+    <FolderPath>Management Views/BOQ</FolderPath>
+    <CreationDate>11/12/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+SELECT
+  sti.[SoftwareTitleID]
+  ,sti.[SoftwareTitleName]
+  --,sti.[SoftwareTitleProductID]
+  ,sti.[ProductName]
+  ,sti.[SoftwareTitleVersion]
+  ,sti.[EditionName]
+  ,sti.[Publisher]
+  --,sti.[SoftwareTitleActionID]
+  ,sti.[IsLicensed]
+  ,sti.[IsLicensable]
+  --,sti.[Installed]
+  ,sti.[HasInstalls]
+  --,sti.[Unassigned]
+  --,sti.[SKU]
+  ,sti.[Category]
+  --,sti.[ClassificationResourceName]
+  ,sti.[ClassificationDefaultValue]
+  --,sti.[SoftwareTitleTypeID]
+  ,sti.[IsSoftwareSuite]
+  ,sti.[IsSoftwareSuiteMember]
+  --,sti.[MaximumSockets]
+  --,sti.[NUPProcessorMultiplier]
+  --,sti.[OverrideSoftwareTitleTypeID]
+  --,sti.[IsSharableToLibrary]
+  --,sti.[IsLocked]
+  --,sti.[UpdatedByARL]
+  --,sti.[Extended]
+  --,sti.[HasEvidence]
+  --,sti.[IsLicensedUnscoped]
+  ,ISNULL(convert(nvarchar(20),eosl.[StartOfLifeDate]),'') as [StartOfLifeDate]
+  ,ISNULL(convert(nvarchar(20),eosl.[ReleaseDate]),'') as [ReleaseDate]
+  ,ISNULL(convert(nvarchar(20),eosl.[EndOfSalesDate]),'') as [EndOfSalesDate]
+  ,ISNULL(convert(nvarchar(20),eosl.[SupportedUntil]),'') as [SupportedUntil]
+  ,ISNULL(convert(nvarchar(20),eosl.[ExtendedSupportUntil]),'') as [ExtendedSupportUntil]
+  ,ISNULL(convert(nvarchar(20),eosl.[EndOfLifeDate]),'') as [EndOfLifeDate]
+  --,eosl.[IsShared]
+FROM [dbo].[SoftwareTitleInfoLimited] as sti
+LEFT OUTER JOIN [dbo].[SoftwareTitleEOSL] as eosl on eosl.[SoftwareTitleID] = sti.SoftwareTitleID
+--ORDER BY sti.SoftwareTitleName
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping />
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>

@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CustomReports>
+  <Report ID="7201" SearchName="090.01.07 Software License Maintenance" ComplianceSearchType="License" ComplianceSearchFolderID="2862" CreatedByOperatorID="" RestrictedAccessTypeID="1" CanDelete="Yes">
+    <Description>Reporting showing software licenses which are under SW Maintenance and their expiration/renewal dates</Description>
+    <FolderName>Management Views/BOQ</FolderName>
+    <CreationDate>11/12/2019</CreationDate>
+    <SearchSQL>
+      <![CDATA[
+
+-- Avoid locking by allowing result to contain uncommitted rows
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+
+-- Set the language to us_english so the datetime is consistent
+SET LANGUAGE us_english
+
+-- Split search words
+DECLARE @SearchWholeWord nvarchar(max)
+SET     @SearchWholeWord = @SearchText
+DECLARE @SearchWords table(Word nvarchar(400) PRIMARY KEY)
+DECLARE @SearchWordCount int
+IF      (@SearchText IS NOT NULL AND @SearchText <> '')
+BEGIN
+        INSERT  @SearchWords SELECT DISTINCT * FROM TableSplitSearchWords(@SearchWholeWord)
+END
+SELECT  @SearchWordCount = COUNT(DISTINCT Word) FROM @SearchWords
+
+-- Pre-calculate licenses that user is allowed access
+	CREATE TABLE #SoftwareLicenseAllowed (SoftwareLicenseID int PRIMARY KEY)
+	INSERT  #SoftwareLicenseAllowed SELECT SoftwareLicenseID FROM SoftwareLicenseCurrentUser
+
+-- Pre-calculate contracts that user is allowed access
+	CREATE TABLE #ContractAllowed (ContractID int PRIMARY KEY)
+	INSERT  #ContractAllowed SELECT * FROM TableContractCurrentUser(NULL, NULL, NULL, NULL)
+
+-- Limit rows returned if setting is present or provided row limit parameter not null
+SET @RowLimit = dbo.MinRowLimit(@RowLimit, 'MaxCustomViewResultRows');
+IF @RowLimit IS NULL OR @RowLimit = -1 BEGIN
+    SET @RowLimit = 0x7FFFFFFF;
+END
+-- Custom view results query
+SELECT  TOP(@RowLimit) results.*
+FROM    (
+                -- Custom view query for licenses
+                	SELECT  SoftwareLicense.SoftwareLicenseID AS [SoftwareLicenseID],
+                        SoftwareLicense.Name AS [Name],
+                        SoftwareLicense.Version AS [Version],
+                        SoftwareLicense.Edition AS [Edition],
+                        Publisher.VendorName AS [PublisherName],
+                        SoftwareLicenseTypeI18N.TypeDefaultValue AS [LicenseType],
+                        LicenseStatusI18N.DefaultValue AS [LicenseStatus],
+                        CAST(CASE WHEN (ISNULL(smt.NumberMaintained,0) > 0) THEN 1 ELSE 0 END AS BIT) AS [HasActiveMaintenance],
+                        SoftwareLicense.TrueUp AS [LicenseSubjectToTrueUp],
+                        SoftwareLicenseDurationI18N.DurationDefaultValue AS [Duration],
+                        SoftwareLicense.ExpiryDate AS [ExpiryDate],
+                        AssetWarrantyTypeI18N.WarrantyTypeDefaultValue AS [LicenseWarrantyType],
+                        SoftwareLicense.WarrantyExpiryDate AS [WarrantyExpiryDate],
+                        ProductPrimary.ProductName AS [ProductName],
+                        SoftwareLicense.ParentLicenseID AS [ParentLicenseID],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractID],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractNumber],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractName],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractType],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_EndDate],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Last renewed date],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractNumber],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractType],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_NeverExpires],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_RenewalDate],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_PreExpiryDate],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_StartDate],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractStatus],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_TotalValue],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Vendor],
+                        [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractID]
+                	FROM    SoftwareLicenseCurrentUserScoped AS SoftwareLicense
+                			-- Filter
+                			INNER JOIN #SoftwareLicenseAllowed AS filter ON filter.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                			-- Additional joins
+                			LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID
+                        LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID
+                        LEFT OUTER JOIN LicenseStatusI18N ON LicenseStatusI18N.LicenseStatusID = SoftwareLicense.LicenseStatusID
+                        LEFT OUTER JOIN SoftwareLicensePODetailMaintenanceTotalsCurrentUser AS smt ON smt.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        LEFT OUTER JOIN SoftwareLicenseDurationI18N ON SoftwareLicenseDurationI18N.SoftwareLicenseDurationID = SoftwareLicense.DurationID
+                        LEFT OUTER JOIN AssetWarrantyTypeI18N ON AssetWarrantyTypeI18N.AssetWarrantyTypeID = SoftwareLicense.WarrantyTypeID
+                        LEFT OUTER JOIN (SELECT slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS ProductName FROM (SELECT slp_inner.SoftwareLicenseID, MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID) ProductPrimary ON ProductPrimary.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+                        -- Link from License to Contracts via SoftwareLicenseContract table
+                        	LEFT OUTER JOIN (
+                        			SELECT  SoftwareLicenseContract.SoftwareLicenseID,
+                        					Contract.*
+                        			FROM    SoftwareLicenseContract
+                        					INNER JOIN (
+                        							-- Custom view query for contracts
+                        								SELECT  Contract.ContractID AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractID],
+                        							        Contract.ContractNo AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractNumber],
+                        							        Contract.ContractName AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractName],
+                        							        ContractTypeI18N.ContractTypeDefaultValue AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractType],
+                        							        Contract.EndDate AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_EndDate],
+                        							        Contract.LastRenewedDate AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Last renewed date],
+                        							        MasterContract.ContractNo AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractNumber],
+                        							        MasterContractType.ContractTypeDefaultValue AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractType],
+                        							        Contract.NeverExpires AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_NeverExpires],
+                        							        Contract.RenewalDate AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_RenewalDate],
+                        							        Contract.PreExpiryDate AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_PreExpiryDate],
+                        							        Contract.StartDate AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_StartDate],
+                        							        ContractStatusI18N.DefaultValue AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractStatus],
+                        							        CAST(Contract.TotalValue * TotalValueRate.Rate AS money) AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_TotalValue],
+                        							        v.VendorName AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Vendor],
+                        							        Contract.MasterContractID AS [R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractID]
+                        								FROM    Contract
+                        										-- Filter
+                        										INNER JOIN #ContractAllowed AS filter ON filter.ContractID = Contract.ContractID
+                        										-- Additional joins
+                        										LEFT OUTER JOIN dbo.ContractTypeI18N ON ContractTypeI18N.ContractTypeID = Contract.ContractTypeID
+                        							        LEFT OUTER JOIN [Contract] AS MasterContract ON MasterContract.ContractID = [Contract].MasterContractID
+                        							        LEFT OUTER JOIN dbo.Contract AS MasterContract2 ON [Contract].MasterContractID = MasterContract2.ContractID LEFT OUTER JOIN dbo.ContractTypeI18N AS MasterContractType ON MasterContractType.ContractTypeID = MasterContract2.ContractTypeID
+                        							        LEFT OUTER JOIN dbo.ContractStatusI18N ON ContractStatusI18N.ContractStatusID = Contract.ContractStatusID
+                        							        LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS TotalValueRate ON TotalValueRate.CurrencyRateID = Contract.TotalValueRateID
+                        							        LEFT OUTER JOIN dbo.Vendor AS v ON v.VendorID = Contract.VendorID
+                        					) AS Contract ON Contract.R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractID = SoftwareLicenseContract.ContractID
+                        	) AS LicenseToContract ON LicenseToContract.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID
+        ) AS results
+WHERE   (@SearchWordCount = 0) OR
+        (@SearchWordCount = (
+                SELECT  COUNT(DISTINCT words.Word)
+                FROM    @SearchWords AS words
+                WHERE   ([Name] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Version] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([Edition] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractNumber] LIKE '%' + words.Word + '%' ESCAPE '\') OR
+                        ([R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractName] LIKE '%' + words.Word + '%' ESCAPE '\')
+        )) OPTION (RECOMPILE)
+      
+      ]]>
+    </SearchSQL>
+    <SearchMapping>
+      <![CDATA[
+<ArrayOfCustomViewColumnMapping xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14909" ColumnName="License.SoftwareLicenseID" ColumnNameResourceName="ComplianceSearchTypeColumn.SoftwareLicenseID" SelectName="SoftwareLicense.SoftwareLicenseID" WhereClause="SoftwareLicense.SoftwareLicenseID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Licenses" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="LicenseType" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>SoftwareLicenseID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14910" ColumnName="License.Name" ColumnNameResourceName="ComplianceSearchTypeColumn.Name" SelectName="SoftwareLicense.Name" WhereClause="SoftwareLicense.Name" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Licenses" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>0</Index>
+    <FieldName>Name</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14911" ColumnName="License.Version" ColumnNameResourceName="ComplianceSearchTypeColumn.Version" SelectName="SoftwareLicense.Version" WhereClause="SoftwareLicense.Version" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>1</Index>
+    <FieldName>Version</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15492" ColumnName="License.Edition" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseEdition" SelectName="SoftwareLicense.Edition" WhereClause="SoftwareLicense.Edition" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>2</Index>
+    <FieldName>Edition</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14917" ColumnName="License.PublisherName" ColumnNameResourceName="ComplianceSearchTypeColumn.PublisherName" FromTable="LEFT OUTER JOIN Vendor AS Publisher ON Publisher.VendorID = SoftwareLicense.PublisherID" SelectName="Publisher.VendorName" WhereClause="Publisher.VendorName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>3</Index>
+    <FieldName>PublisherName</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14912" ColumnName="License.LicenseType" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseType" FromTable="LEFT OUTER JOIN SoftwareLicenseTypeI18N ON SoftwareLicenseTypeI18N.SoftwareLicenseTypeID = SoftwareLicense.LicenseTypeID" SelectName="SoftwareLicenseTypeI18N.TypeDefaultValue" WhereClause="SoftwareLicenseTypeI18N.SoftwareLicenseTypeID" SelectOptionsSQL="SELECT DISTINCT SoftwareLicenseTypeID AS [ID], TypeResourceName AS ResourceName, TypeDefaultValue AS DefaultName from dbo.SoftwareLicenseTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>4</Index>
+    <FieldName>LicenseType</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14915" ColumnName="License.LicenseStatus" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseStatus" FromTable="LEFT OUTER JOIN LicenseStatusI18N ON LicenseStatusI18N.LicenseStatusID = SoftwareLicense.LicenseStatusID" SelectName="LicenseStatusI18N.DefaultValue" WhereClause="LicenseStatusI18N.LicenseStatusID" SelectOptionsSQL="SELECT DISTINCT LicenseStatusID AS [ID], ResourceName AS ResourceName, DefaultValue AS DefaultName from dbo.LicenseStatusI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>5</Index>
+    <FieldName>LicenseStatus</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14824" ColumnName="License.HasActiveMaintenance" ColumnNameResourceName="ComplianceSearchTypeColumn.HasActiveMaintenance" FromTable="LEFT OUTER JOIN SoftwareLicensePODetailMaintenanceTotalsCurrentUser AS smt ON smt.SoftwareLicenseID = SoftwareLicense.SoftwareLicenseID" SelectName="CAST(CASE WHEN (ISNULL(smt.NumberMaintained,0) &gt; 0) THEN 1 ELSE 0 END AS BIT)" WhereClause="CAST(CASE WHEN (ISNULL(smt.NumberMaintained,0) &gt; 0) THEN 1 ELSE 0 END AS BIT)" FilterGroupType="7" DefaultFilterType="7" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>6</Index>
+    <FieldName>HasActiveMaintenance</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14853" ColumnName="License.LicenseSubjectToTrueUp" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseSubjectToTrueUp" SelectName="SoftwareLicense.TrueUp" WhereClause="SoftwareLicense.TrueUp" FilterGroupType="7" DefaultFilterType="7" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>7</Index>
+    <FieldName>LicenseSubjectToTrueUp</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14913" ColumnName="License.Duration" ColumnNameResourceName="ComplianceSearchTypeColumn.Duration" FromTable="LEFT OUTER JOIN SoftwareLicenseDurationI18N ON SoftwareLicenseDurationI18N.SoftwareLicenseDurationID = SoftwareLicense.DurationID" SelectName="SoftwareLicenseDurationI18N.DurationDefaultValue" WhereClause="SoftwareLicenseDurationI18N.SoftwareLicenseDurationID" SelectOptionsSQL="SELECT DISTINCT SoftwareLicenseDurationID AS [ID], DurationResourceName AS ResourceName, DurationDefaultValue AS DefaultName from dbo.SoftwareLicenseDurationI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>8</Index>
+    <FieldName>Duration</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14929" ColumnName="License.ExpiryDate" ColumnNameResourceName="ComplianceSearchTypeColumn.ExpiryDate" SelectName="SoftwareLicense.ExpiryDate" WhereClause="SoftwareLicense.ExpiryDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>9</Index>
+    <FieldName>ExpiryDate</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14935" ColumnName="License.LicenseWarrantyType" ColumnNameResourceName="ComplianceSearchTypeColumn.LicenseWarrantyType" FromTable="LEFT OUTER JOIN AssetWarrantyTypeI18N ON AssetWarrantyTypeI18N.AssetWarrantyTypeID = SoftwareLicense.WarrantyTypeID" SelectName="AssetWarrantyTypeI18N.WarrantyTypeDefaultValue" WhereClause="AssetWarrantyTypeI18N.AssetWarrantyTypeID" SelectOptionsSQL="SELECT DISTINCT AssetWarrantyTypeID AS [ID], WarrantyTypeResourceName AS ResourceName, WarrantyTypeDefaultValue AS DefaultName from dbo.AssetWarrantyTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>10</Index>
+    <FieldName>LicenseWarrantyType</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14932" ColumnName="License.WarrantyExpiryDate" ColumnNameResourceName="ComplianceSearchTypeColumn.WarrantyExpiryDate" SelectName="SoftwareLicense.WarrantyExpiryDate" WhereClause="SoftwareLicense.WarrantyExpiryDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>11</Index>
+    <FieldName>WarrantyExpiryDate</FieldName>
+    <ShowInGrid>true</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14823" ColumnName="License.ProductName" ColumnNameResourceName="ComplianceSearchTypeColumn.ProductPrimary" FromTable="LEFT OUTER JOIN (SELECT slp_maxed.SoftwareLicenseID, CASE WHEN slp_maxed.ProductCount = 1 THEN stp.ProductName ELSE (SELECT ResourceValue FROM dbo.GetTranslation('SoftwareLicenseProduct.Multiple')) END AS ProductName FROM (SELECT slp_inner.SoftwareLicenseID, MIN(slp_inner.SoftwareTitleProductID) AS SoftwareTitleProductID, COUNT(slp_inner.SoftwaretitleProductID) AS ProductCount FROM dbo.SoftwareLicenseProduct AS slp_inner WHERE slp_inner.Supplementary = 0 GROUP BY slp_inner.SoftwareLicenseID) AS slp_maxed INNER JOIN dbo.SoftwareTitleProduct AS stp ON stp.SoftwareTitleProductID = slp_maxed.SoftwareTitleProductID) {NAMESPACE}ProductPrimary ON {NAMESPACE}ProductPrimary.SoftwareLicenseID = {NAMESPACE}SoftwareLicense.SoftwareLicenseID" SelectName="ProductPrimary.ProductName" WhereClause="ProductPrimary.ProductName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="600" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>21</Index>
+    <FieldName>ProductName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15385" ColumnName="License.ParentLicenseID" ColumnNameResourceName="ComplianceSearchTypeColumn.ParentLicenseID" SelectName="SoftwareLicense.ParentLicenseID" WhereClause="SoftwareLicense.ParentLicenseID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="600" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>ParentLicenseID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>1</QueryDepth>
+    <ParentName>License</ParentName>
+    <RelationName />
+    <RelationPath />
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14950" ColumnName="Contract.ContractID" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractID" SelectName="Contract.ContractID" WhereClause="Contract.ContractID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="601" Mandatory="true" PrimaryKey="true" SelectByDefault="false" IsCustom="false" LinkAction="Edit" LinkController="Contracts" LinkIndicateOrigin="true" IsMultiEditEnabled="true" MultiEditConditionField="ContractType" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>-2147483648</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14952" ColumnName="Contract.ContractNumber" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractNumber" SelectName="Contract.ContractNo" WhereClause="Contract.ContractNo" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>12</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractNumber</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14951" ColumnName="Contract.ContractName" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractName" SelectName="Contract.ContractName" WhereClause="Contract.ContractName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="true" IsCustom="false" LinkAction="Edit" LinkController="Contracts" LinkIndicateOrigin="true" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>18</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractName</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>0</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>PartialMatch</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14953" ColumnName="Contract.ContractType" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractType" FromTable="LEFT OUTER JOIN dbo.ContractTypeI18N ON ContractTypeI18N.ContractTypeID = Contract.ContractTypeID" SelectName="ContractTypeI18N.ContractTypeDefaultValue" WhereClause="ContractTypeI18N.ContractTypeID" SelectOptionsSQL="SELECT DISTINCT ContractTypeID AS [ID], ContractTypeResourceName AS ResourceName, ContractTypeDefaultValue AS DefaultName FROM dbo.ContractTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="601" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>13</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractType</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14956" ColumnName="Contract.EndDate" ColumnNameResourceName="ComplianceSearchTypeColumn.EndDate" SelectName="Contract.EndDate" WhereClause="Contract.EndDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>14</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_EndDate</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="16597" ColumnName="Last renewed date" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractLastRenewedDate" SelectName="Contract.LastRenewedDate" WhereClause="Contract.LastRenewedDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>15</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Last renewed date</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14965" ColumnName="Contract.MasterContractNumber" ColumnNameResourceName="ComplianceSearchTypeColumn.MasterContractNumber" FromTable="LEFT OUTER JOIN [Contract] AS MasterContract ON MasterContract.ContractID = [Contract].MasterContractID" SelectName="MasterContract.ContractNo" WhereClause="MasterContract.ContractNo" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>16</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractNumber</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14967" ColumnName="Contract.MasterContractType" ColumnNameResourceName="ComplianceSearchTypeColumn.MasterContractType" FromTable="LEFT OUTER JOIN dbo.Contract AS MasterContract2 ON [Contract].MasterContractID = MasterContract2.ContractID LEFT OUTER JOIN dbo.ContractTypeI18N AS MasterContractType ON MasterContractType.ContractTypeID = MasterContract2.ContractTypeID" SelectName="MasterContractType.ContractTypeDefaultValue" WhereClause="MasterContractType.ContractTypeID" SelectOptionsSQL="SELECT DISTINCT ContractTypeID AS [ID], ContractTypeResourceName AS ResourceName, ContractTypeDefaultValue AS DefaultName FROM dbo.ContractTypeI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>17</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractType</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14969" ColumnName="Contract.NeverExpires" ColumnNameResourceName="ComplianceSearchTypeColumn.NeverExpires" SelectName="Contract.NeverExpires" WhereClause="Contract.NeverExpires" FilterGroupType="7" DefaultFilterType="7" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>19</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_NeverExpires</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14958" ColumnName="Contract.RenewalDate" ColumnNameResourceName="ComplianceSearchTypeColumn.RenewalDate" SelectName="Contract.RenewalDate" WhereClause="Contract.RenewalDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>20</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_RenewalDate</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14957" ColumnName="Contract.PreExpiryDate" ColumnNameResourceName="ComplianceSearchTypeColumn.Pre-expiryDate" SelectName="Contract.PreExpiryDate" WhereClause="Contract.PreExpiryDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>22</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_PreExpiryDate</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14955" ColumnName="Contract.StartDate" ColumnNameResourceName="ComplianceSearchTypeColumn.StartDate" SelectName="Contract.StartDate" WhereClause="Contract.StartDate" FilterGroupType="4" DefaultFilterType="4" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>23</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_StartDate</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14954" ColumnName="Contract.ContractStatus" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractStatus" FromTable="LEFT OUTER JOIN dbo.ContractStatusI18N ON ContractStatusI18N.ContractStatusID = Contract.ContractStatusID" SelectName="ContractStatusI18N.DefaultValue" WhereClause="ContractStatusI18N.ContractStatusID" SelectOptionsSQL="SELECT DISTINCT ContractStatusID AS [ID], ResourceName, DefaultValue AS DefaultName FROM dbo.ContractStatusI18N" FilterGroupType="3" DefaultFilterType="3" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>24</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_ContractStatus</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="15523" ColumnName="Contract.TotalValue" ColumnNameResourceName="ComplianceSearchTypeColumn.ContractTotalValue" FromTable="LEFT OUTER JOIN GetCurrencyExchangeRates(@CurrencyID) AS TotalValueRate ON TotalValueRate.CurrencyRateID = Contract.TotalValueRateID" SelectName="CAST(Contract.TotalValue * TotalValueRate.Rate AS money) AS TotalValue" WhereClause="CAST(Contract.TotalValue * TotalValueRate.Rate AS money)" FilterGroupType="6" DefaultFilterType="6" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>25</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_TotalValue</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14960" ColumnName="Contract.Vendor" ColumnNameResourceName="ComplianceSearchTypeColumn.Vendor" FromTable="LEFT OUTER JOIN dbo.Vendor AS v ON v.VendorID = Contract.VendorID" SelectName="v.VendorName" WhereClause="v.VendorName" FilterGroupType="1" DefaultFilterType="1" ComplianceSearchTypeID="601" Mandatory="false" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>26</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_Vendor</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>false</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+  <CustomViewColumnMapping>
+    <Column ComplianceSearchTypeColumnID="14968" ColumnName="Contract.MasterContractID" ColumnNameResourceName="ComplianceSearchTypeColumn.MasterContractID" SelectName="Contract.MasterContractID" WhereClause="Contract.MasterContractID" FilterGroupType="2" DefaultFilterType="2" ComplianceSearchTypeID="601" Mandatory="true" PrimaryKey="false" SelectByDefault="false" IsCustom="false" LinkIndicateOrigin="false" IsMultiEditEnabled="false" ModifyState="Unchanged" />
+    <Index>-1</Index>
+    <FieldName>R2_5e423854fc2efabec1c45cc2c1f874e0_LicenseToContract_MasterContractID</FieldName>
+    <ShowInGrid>false</ShowInGrid>
+    <Hidden>true</Hidden>
+    <Order>2147483647</Order>
+    <QueryDepth>2</QueryDepth>
+    <ParentName>Contract</ParentName>
+    <RelationName>LicenseToContract</RelationName>
+    <RelationPath>LicenseToContract</RelationPath>
+    <MatchOption>Excluded</MatchOption>
+  </CustomViewColumnMapping>
+</ArrayOfCustomViewColumnMapping>
+      ]]>
+    </SearchMapping>
+    <SearchXML>
+      <![CDATA[
+<customview>
+  <!--Custom view properties-->
+  <name>090.01.07 Software License Maintenance</name>
+  <description>Reporting showing software licenses which are under SW Maintenance and their expiration/renewal dates</description>
+  <schemaVersion>2.0</schemaVersion>
+  <productVersion>13.1.1</productVersion>
+  <!--Master custom view object-->
+  <object name="License" major="true">
+    <column index="0" name="License.Name" show="true" match="PartialMatch" />
+    <column index="1" name="License.Version" show="true" match="PartialMatch" />
+    <column index="2" name="License.Edition" show="true" match="PartialMatch" />
+    <column index="3" name="License.PublisherName" show="true" match="Excluded" />
+    <column index="4" name="License.LicenseType" show="true" match="Excluded" />
+    <column index="5" name="License.LicenseStatus" show="true" match="Excluded" />
+    <column index="6" name="License.HasActiveMaintenance" show="true" match="Excluded" />
+    <column index="7" name="License.LicenseSubjectToTrueUp" show="true" match="Excluded" />
+    <column index="8" name="License.Duration" show="true" match="Excluded" />
+    <column index="9" name="License.ExpiryDate" show="true" match="Excluded" />
+    <column index="10" name="License.LicenseWarrantyType" show="true" match="Excluded" />
+    <column index="11" name="License.WarrantyExpiryDate" show="true" match="Excluded" />
+    <column index="21" name="License.ProductName" show="false" match="Excluded" />
+    <!--Linked LicenseToContract-->
+    <relation name="LicenseToContract">
+      <object name="Contract" major="true">
+        <column index="12" name="Contract.ContractNumber" show="false" match="PartialMatch" />
+        <column index="13" name="Contract.ContractType" show="false" match="Excluded" />
+        <column index="14" name="Contract.EndDate" show="false" match="Excluded" />
+        <column index="15" name="Last renewed date" show="false" match="Excluded" />
+        <column index="16" name="Contract.MasterContractNumber" show="false" match="Excluded" />
+        <column index="17" name="Contract.MasterContractType" show="false" match="Excluded" />
+        <column index="18" name="Contract.ContractName" show="false" match="PartialMatch" />
+        <column index="19" name="Contract.NeverExpires" show="false" match="Excluded" />
+        <column index="20" name="Contract.RenewalDate" show="false" match="Excluded" />
+        <column index="22" name="Contract.PreExpiryDate" show="false" match="Excluded" />
+        <column index="23" name="Contract.StartDate" show="false" match="Excluded" />
+        <column index="24" name="Contract.ContractStatus" show="false" match="Excluded" />
+        <column index="25" name="Contract.TotalValue" show="false" match="Excluded" />
+        <column index="26" name="Contract.Vendor" show="false" match="Excluded" />
+      </object>
+    </relation>
+  </object>
+</customview>
+      ]]>
+    </SearchXML>
+  </Report>
+</CustomReports>
