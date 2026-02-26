@@ -1,4 +1,4 @@
-﻿namespace Crayon
+﻿namespace BlackBox
 {
     partial class AppBuilderForm
     {

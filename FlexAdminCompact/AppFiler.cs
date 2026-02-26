@@ -19,7 +19,7 @@ using System.CodeDom.Compiler;
 using System.Diagnostics;
 using System.Reflection;
 
-namespace Crayon
+namespace BlackBox
 { 
   #region Class AppFiler
 
@@ -82,7 +82,7 @@ namespace Crayon
         source += "[assembly: AssemblyTrademark(\"\")]\n";
         source += "[assembly: AssemblyCulture(\"\")]\n";
         source += "\n";
-        source += "namespace Crayon\n";
+        source += "namespace BlackBox\n";
         source += "{\n";
         source += "  static class Program\n";
         source += "  {\n";
@@ -772,7 +772,7 @@ namespace Crayon
       //
       try
       {
-        string resname = String.Format("Crayon.{0}", name);
+        string resname = String.Format("BlackBox.{0}", name);
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -803,7 +803,7 @@ namespace Crayon
       //
       try
       {
-        string resname = String.Format("Crayon.{0}.gz", name);       
+        string resname = String.Format("BlackBox.{0}.gz", name);       
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -813,7 +813,7 @@ namespace Crayon
         using (Stream gzip = new GZipStream(rs, CompressionMode.Decompress, true))
         {
           string path = Path.Combine(AppSettings.workingFolder, name); 
-          path.Replace("Crayon.","");
+          path.Replace("BlackBox.","");
           //
           using (Stream file = File.Create(path))
           {
@@ -840,16 +840,16 @@ namespace Crayon
     {
       // must load this here or the recompile wont work
       string[] res = ass.GetManifestResourceNames();
-      Stream rs = ass.GetManifestResourceStream(String.Format("Crayon.{0}.png", type));
+      Stream rs = ass.GetManifestResourceStream(String.Format("BlackBox.{0}.png", type));
       if (rs != null)
         pb.Image = new Bitmap(rs);
       else
       {
         // also try for a zipped resource
-        rs = ass.GetManifestResourceStream(String.Format("Crayon.{0}.png.gz", type));
+        rs = ass.GetManifestResourceStream(String.Format("BlackBox.{0}.png.gz", type));
         if (rs == null)
         {
-          MessageBox.Show(String.Format("Resource Crayon.{0}.png.gz not found", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+          MessageBox.Show(String.Format("Resource BlackBox.{0}.png.gz not found", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         else          
         {
@@ -858,7 +858,7 @@ namespace Crayon
             pb.Image = new Bitmap(gzip);      
           else
           {
-            MessageBox.Show(String.Format("Resource Crayon.{0}.png.gz was not decompressed", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(String.Format("Resource BlackBox.{0}.png.gz was not decompressed", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
           }
         }
       }

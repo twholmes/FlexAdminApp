@@ -19,7 +19,7 @@ using System.CodeDom.Compiler;
 using System.Diagnostics;
 using System.Reflection;
 
-namespace Crayon
+namespace BlackBox
 {
   #region Class AppCompactForm
   /// <summary>
@@ -89,6 +89,9 @@ namespace Crayon
 
     private void AppCompactForm_Load(object sender, EventArgs e)
     {
+      // initialise logging
+      Logger.Init(String.Format("{0}.log", AppSettings.appName), 1);
+      Logger.WriteLog("initialised");
       Logger.WriteLog(String.Format("Running {0}", AppSettings.appName));
       //
       // initialise run run-from-temp enev if its not the startup mode
@@ -110,7 +113,7 @@ namespace Crayon
       }
       // set the run tab picture
       Assembly ass = Assembly.GetExecutingAssembly(); 
-      AppFiler.ExtractPicture(ass, this.pictureBoxCrayon, "crayon");
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "crayon");
       //
       this.labelContentStatus.Text = "initial";
       //
@@ -131,10 +134,6 @@ namespace Crayon
       // initialise app version from assembly      
       Version version = Assembly.GetEntryAssembly().GetName().Version;
       this.labelVersion.Text = String.Format("rev: {0}", version.ToString());
-      //
-      // initialise logging
-      Logger.Init(String.Format("{0}.log", AppSettings.appName), 1);
-      Logger.WriteLog("initialised");
       //
       // help must always be available
       bool exists = File.Exists(Path.Combine(AppSettings.workingFolder, "readme.txt"));
@@ -672,7 +671,7 @@ namespace Crayon
     {
       Assembly ass = Assembly.GetExecutingAssembly();       
       AppRunner.Context = AppRunner.RunContext.ImplFiles;
-      AppFiler.ExtractPicture(ass, this.pictureBoxCrayon, "crayon");      
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "crayon");      
       this.buttonRun.Text = "RUN";
       this.toolStripMenuItemRunImplFiles.Checked = true;
       this.toolStripMenuItemRunSQL.Checked = false;
@@ -684,7 +683,7 @@ namespace Crayon
     {
       Assembly ass = Assembly.GetExecutingAssembly();       
       AppRunner.Context = AppRunner.RunContext.CMD;
-      AppFiler.ExtractPicture(ass, this.pictureBoxCrayon, "cmd");
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "cmd");
       this.buttonRun.Text = "RUN";
       this.toolStripMenuItemRunImplFiles.Checked = false;
       this.toolStripMenuItemRunSQL.Checked = false;
@@ -696,7 +695,7 @@ namespace Crayon
     {
       Assembly ass = Assembly.GetExecutingAssembly();       
       AppRunner.Context = AppRunner.RunContext.PowerShell; 
-      AppFiler.ExtractPicture(ass, this.pictureBoxCrayon, "ps");
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "ps");
       this.buttonRun.Text = "RUN";
       this.toolStripMenuItemRunImplFiles.Checked = false;
       this.toolStripMenuItemRunSQL.Checked = false;
@@ -708,7 +707,7 @@ namespace Crayon
     {
       Assembly ass = Assembly.GetExecutingAssembly();       
       AppRunner.Context = AppRunner.RunContext.SQL;
-      AppFiler.ExtractPicture(ass, this.pictureBoxCrayon, "sql");
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "sql");
       this.buttonRun.Text = "EXECUTE";
       this.toolStripMenuItemRunImplFiles.Checked = false;
       this.toolStripMenuItemRunSQL.Checked = true;

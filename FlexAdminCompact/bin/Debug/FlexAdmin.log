@@ -1,152 +1,66 @@
-2020-09-19 17:13:23 ::  initialised
-2020-09-19 17:13:48 ::  Console: ... script.cmd
-2020-09-19 17:13:48 ::  Console: ... script.ps1
-2020-09-19 17:13:49 ::  Console: ... script.sql
-2020-09-19 17:13:49 ::  Console: ... readme.txt
-2020-09-19 17:13:49 ::  Console: ... runner.txt
-2020-09-19 17:13:49 ::  Console: ... payload.zip
-2020-09-19 17:13:49 ::  Console: ... implfiles.zip
-2020-09-19 17:13:56 ::  Working directory (temp): D:\GitHubCrayon\FlexAdmin\FlexAdminCompact\bin\Debug
-2020-09-19 17:14:03 ::  Console: ... script.cmd
-2020-09-19 17:14:03 ::  Console: ... script.ps1
-2020-09-19 17:14:03 ::  Console: ... script.sql
-2020-09-19 17:14:03 ::  Console: ... readme.txt
-2020-09-19 17:14:03 ::  Console: ... runner.txt
-2020-09-19 17:14:03 ::  Console: ... payload.zip
-2020-09-19 17:14:03 ::  Console: ... implfiles.zip
-2020-09-19 17:14:14 ::  Console: ... crayon.png
-2020-09-19 17:14:14 ::  Console: ... file.png
-2020-09-19 17:14:14 ::  Console: ... cmd.png
-2020-09-19 17:14:14 ::  Console: ... ps.png
-2020-09-19 17:14:14 ::  Console: ... sql.png
-2020-09-19 17:14:18 ::  Console: ... script.cmd
-2020-09-19 17:14:19 ::  Console: ... script.ps1
-2020-09-19 17:14:20 ::  Console: ... script.sql
-2020-09-19 17:14:20 ::  Console: ... readme.txt
-2020-09-19 17:14:20 ::  Console: ... runner.txt
-2020-09-19 17:14:20 ::  Console: ... payload.zip
-2020-09-19 17:14:20 ::  Console: ... implfiles.zip
-2020-09-19 17:14:28 ::  Console: ... crayon.png
-2020-09-19 17:14:28 ::  Console: ... file.png
-2020-09-19 17:14:28 ::  Console: ... cmd.png
-2020-09-19 17:14:28 ::  Console: ... ps.png
-2020-09-19 17:14:28 ::  Console: ... sql.png
-2020-09-19 17:14:38 ::  Console: ... script.cmd
-2020-09-19 17:14:38 ::  Console: ... script.ps1
-2020-09-19 17:14:39 ::  Console: ... script.sql
-2020-09-19 17:14:39 ::  Console: ... readme.txt
-2020-09-19 17:14:39 ::  Console: ... runner.txt
-2020-09-19 17:14:39 ::  Console: ... events.xml
-2020-09-19 17:14:39 ::  Console: ... actions.xml
-2020-09-19 17:14:39 ::  Console: ... payload.zip
-2020-09-19 17:14:39 ::  Console: ... implfiles.zip
-2020-09-19 17:14:53 ::  Console: ... crayon.png
-2020-09-19 17:14:53 ::  Console: ... file.png
-2020-09-19 17:14:53 ::  Console: ... cmd.png
-2020-09-19 17:14:53 ::  Console: ... ps.png
-2020-09-19 17:14:53 ::  Console: ... sql.png
-2020-09-19 17:15:02 ::  Console: ... script.cmd
-2020-09-19 17:15:02 ::  Console: ... script.ps1
-2020-09-19 17:15:03 ::  Console: ... script.sql
-2020-09-19 17:15:03 ::  Console: ... readme.txt
-2020-09-19 17:15:03 ::  Console: ... runner.txt
-2020-09-19 17:15:03 ::  Console: ... events.xml
-2020-09-19 17:15:03 ::  Console: ... actions.xml
-2020-09-19 17:15:03 ::  Console: ... payload.zip
-2020-09-19 17:15:03 ::  Console: ... implfiles.zip
-2020-09-19 17:15:07 ::  closing
-2020-09-19 17:16:10 ::  initialised
-2020-09-19 17:16:23 ::  closing
-2020-09-19 17:17:40 ::  initialised
-2020-09-19 17:18:30 ::  closing
-2020-09-20 10:31:58 ::  initialised
-2020-09-20 10:32:22 ::  closing
-2020-09-20 10:32:55 ::  initialised
-2020-09-20 10:33:38 ::  Working directory (temp): C:\ImplFiles\
-2020-09-20 10:33:48 ::  Console: RUN flexadmin ShellListInstalled
-2020-09-20 10:33:48 ::  write generated script from ... script.ps1
-2020-09-20 10:33:48 ::  run script: script.cmd
-2020-09-20 10:33:48 ::  run SHELL execute:C:\ImplFiles\generated.cmd
-2020-09-20 10:33:58 ::  closing
-2020-09-20 11:23:39 ::  initialised
-2020-09-20 11:23:47 ::  Working directory (temp): C:\ImplFiles\
-2020-09-20 11:24:52 ::  closing
-2020-09-21 09:44:49 ::  initialised
-2020-09-21 09:45:17 ::  Working directory (temp): C:\ImplFiles\
-2020-09-21 09:48:01 ::  initialised
-2020-09-21 09:48:04 ::  Working directory (temp): C:\ImplFiles\
-2020-09-21 09:48:51 ::  initialised
-2020-09-21 09:48:53 ::  Working directory (temp): C:\ImplFiles\
-2020-09-21 09:48:57 ::  closing
-2020-09-21 12:18:13 ::  initialised
-2020-09-21 12:18:13 ::  Console: ... readme.txt
-2020-09-21 12:18:13 ::  Console: ... runner.txt
-2020-09-21 12:18:15 ::  Working directory (temp): C:\Users\Administrator\AppData\Local\Temp\1\e21mbstg.spv
-2020-09-21 12:18:43 ::  closing
-2020-09-21 12:20:13 ::  initialised
-2020-09-21 12:20:13 ::  Console: ... readme.txt
-2020-09-21 12:20:13 ::  Console: ... runner.txt
-2020-09-21 12:20:15 ::  Working directory (temp): C:\Users\Administrator\AppData\Local\Temp\1\hwkzimdy.3hg
-2020-09-21 12:25:17 ::  initialised
-2020-09-21 12:25:17 ::  Console: ... readme.txt
-2020-09-21 12:25:17 ::  Console: ... runner.txt
-2020-09-21 12:33:26 ::  initialised
-2020-09-21 12:33:26 ::  Console: ... readme.txt
-2020-09-21 12:33:26 ::  Console: ... runner.txt
-2020-09-21 12:33:27 ::  Working directory (temp): C:\Users\Administrator\AppData\Local\Temp\1\xp0xcpk2.eje
-2020-09-21 12:34:28 ::  initialised
-2020-09-21 12:34:28 ::  Console: ... readme.txt
-2020-09-21 12:34:28 ::  Console: ... runner.txt
-2020-09-21 12:34:29 ::  Console: ... actions.xml
-2020-09-21 12:34:30 ::  closing
-2020-09-21 12:34:45 ::  closing
-2020-09-21 12:34:49 ::  initialised
-2020-09-21 12:34:49 ::  Console: ... readme.txt
-2020-09-21 12:34:49 ::  Console: ... runner.txt
-2020-09-21 12:34:51 ::  Working directory (temp): C:\Users\Administrator\AppData\Local\Temp\1\sn4jsitc.1wr
-2020-09-21 12:35:08 ::  closing
-2020-09-21 14:10:58 ::  initialised
-2020-09-21 14:11:18 ::  closing
-2020-09-21 14:16:38 ::  initialised
-2020-09-21 14:16:39 ::  closing
-2020-09-21 14:16:49 ::  initialised
-2020-09-21 14:17:06 ::  closing
-2020-09-21 14:17:17 ::  initialised
-2020-09-21 14:17:29 ::  Working directory (temp): D:\GitHubCrayon\FlexAdmin\FlexAdminCompact\bin\Debug
-2020-09-21 14:17:43 ::  closing
-2020-09-21 14:28:21 ::  initialised
-2020-09-21 14:28:37 ::  Working directory (temp): D:\GitHubCrayon\FlexAdmin\FlexAdminCompact\bin\Debug
-2020-09-21 14:29:09 ::  closing
-2020-11-01 11:18:03 ::  initialised
-2020-11-01 11:18:07 ::  Working directory (temp): C:\ImplFiles\
-2020-11-01 11:20:22 ::  initialised
-2020-11-01 11:20:24 ::  Working directory (temp): C:\ImplFiles\
-2020-11-01 11:24:50 ::  initialised
-2020-11-01 11:24:52 ::  Working directory (temp): C:\ImplFiles\
-2020-11-01 11:37:28 ::  initialised
-2020-11-01 11:37:31 ::  Working directory (temp): C:\ImplFiles\
-2023-11-11 17:43:24 ::  initialised
-2023-11-11 17:43:24 ::  Console: ... readme.txt
-2023-11-11 17:43:24 ::  Console: ... runner.txt
-2023-11-11 17:43:27 ::  closing
-2023-11-11 17:43:30 ::  initialised
-2023-11-11 17:43:30 ::  Console: ... readme.txt
-2023-11-11 17:43:30 ::  Console: ... runner.txt
-2023-11-11 17:43:34 ::  Console: ... actions.xml
-2023-11-11 18:15:08 ::  closing
-2026-02-22 21:13:31 ::  initialised
-2026-02-22 21:13:31 ::  Console: ... readme.txt
-2026-02-22 21:13:31 ::  Console: ... runner.txt
-2026-02-22 21:13:39 ::  closing
-2026-02-22 21:14:19 ::  initialised
-2026-02-22 21:14:19 ::  Console: ... readme.txt
-2026-02-22 21:14:19 ::  Console: ... runner.txt
-2026-02-22 21:14:38 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\ezw0qx0z.dql
-2026-02-22 21:15:16 ::  Current directory: D:\GitHubCrayon\FlexAdmin\FlexAdminCompact\bin\Debug
-2026-02-22 21:15:16 ::  Compiler directory: C:\Users\trevorh\AppData\Local\Temp\ewjb10kr.xob
-2026-02-22 21:15:48 ::  Current directory: D:\GitHubCrayon\FlexAdmin\FlexAdminCompact\bin\Debug
-2026-02-22 21:15:48 ::  Compiler directory: C:\Users\trevorh\AppData\Local\Temp\unj2prom.unq
-2026-02-22 21:19:11 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\ezw0qx0z.dql
-2026-02-22 21:19:32 ::  run notepad.exe ... readme.txt
-2026-02-22 21:19:49 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\ezw0qx0z.dql
-2026-02-22 21:20:57 ::  closing
+2026-02-26 20:04:17 ::  initialised
+2026-02-26 20:04:17 ::  Running FlexAdmin
+2026-02-26 20:04:17 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-26 20:04:17 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\fzrslykl.h4i
+2026-02-26 20:04:17 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\fzrslykl.h4i
+2026-02-26 20:04:17 ::  Console: ... readme.txt
+2026-02-26 20:04:17 ::  Console: ... runner.txt
+2026-02-26 20:04:28 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-26 20:04:28 ::  Compiler directory: C:\Users\trevorh\AppData\Local\Temp\eezst5pm.dcn
+2026-02-26 21:27:06 ::  initialised
+2026-02-26 21:27:06 ::  Running FlexAdmin
+2026-02-26 21:27:06 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-26 21:27:06 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\v5xoaqkj.q01
+2026-02-26 21:27:06 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\v5xoaqkj.q01
+2026-02-26 21:27:06 ::  Console: ... readme.txt
+2026-02-26 21:27:06 ::  Console: ... runner.txt
+2026-02-26 21:27:17 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-26 21:27:17 ::  Compiler directory: C:\Users\trevorh\AppData\Local\Temp\4xs5b2li.dk3
+2026-02-27 09:05:02 ::  initialised
+2026-02-27 09:05:02 ::  Running FlexAdmin
+2026-02-27 09:05:02 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:05:02 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\hiwcsulu.u3j
+2026-02-27 09:05:02 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\hiwcsulu.u3j
+2026-02-27 09:05:09 ::  Console: ... readme.txt
+2026-02-27 09:05:09 ::  Console: ... runner.txt
+2026-02-27 09:05:28 ::  closing
+2026-02-27 09:07:47 ::  initialised
+2026-02-27 09:07:47 ::  Running FlexAdmin
+2026-02-27 09:07:47 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:07:47 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\5wl1fggj.amv
+2026-02-27 09:07:47 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\5wl1fggj.amv
+2026-02-27 09:08:18 ::  Console: ... readme.txt
+2026-02-27 09:08:18 ::  Console: ... runner.txt
+2026-02-27 09:08:29 ::  closing
+2026-02-27 09:09:54 ::  initialised
+2026-02-27 09:09:54 ::  Running FlexAdmin
+2026-02-27 09:09:54 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:09:54 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\sq45xzlv.fl5
+2026-02-27 09:09:54 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\sq45xzlv.fl5
+2026-02-27 09:09:59 ::  Console: ... readme.txt
+2026-02-27 09:09:59 ::  Console: ... runner.txt
+2026-02-27 09:10:04 ::  closing
+2026-02-27 09:13:58 ::  initialised
+2026-02-27 09:13:58 ::  Running FlexAdmin
+2026-02-27 09:13:58 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:13:58 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\qkc2ejkw.mck
+2026-02-27 09:13:58 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\qkc2ejkw.mck
+2026-02-27 09:14:02 ::  Console: ... readme.txt
+2026-02-27 09:14:02 ::  Console: ... runner.txt
+2026-02-27 09:14:26 ::  initialised
+2026-02-27 09:14:26 ::  Running FlexAdmin
+2026-02-27 09:14:26 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:14:26 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\u5s5cjg5.c4a
+2026-02-27 09:14:26 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\u5s5cjg5.c4a
+2026-02-27 09:14:38 ::  Console: ... readme.txt
+2026-02-27 09:14:38 ::  Console: ... runner.txt
+2026-02-27 09:14:41 ::  closing
+2026-02-27 09:17:20 ::  initialised
+2026-02-27 09:17:20 ::  Running FlexAdmin
+2026-02-27 09:17:20 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:17:20 ::  Temp directory: C:\Users\trevorh\AppData\Local\Temp\mvoyalsq.gcz
+2026-02-27 09:17:20 ::  Working directory (temp): C:\Users\trevorh\AppData\Local\Temp\mvoyalsq.gcz
+2026-02-27 09:17:20 ::  Console: ... readme.txt
+2026-02-27 09:17:20 ::  Console: ... runner.txt
+2026-02-27 09:17:35 ::  Current directory: D:\GitHub\FlexAdminApp\FlexAdminCompact\bin\Debug
+2026-02-27 09:17:35 ::  Compiler directory: C:\Users\trevorh\AppData\Local\Temp\1lajomkh.53a

@@ -42,24 +42,24 @@
     </dependentAssembly>
   </dependency>
   <dependency>
-    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="FlexAdmin.exe" size="1700352">
+    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="FlexAdmin.exe" size="1702912">
       <assemblyIdentity name="FlexAdmin" version="1.0.3.0" language="neutral" processorArchitecture="amd64" />
       <hash>
         <dsig:Transforms>
           <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
         </dsig:Transforms>
         <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
-        <dsig:DigestValue>//Qa5WWGiudQbWsQ0RvE24c5M3PSZGn+qHObWjJZsjg=</dsig:DigestValue>
+        <dsig:DigestValue>kgVXN9ws2UFV6S7BSktWyD4nmS/aSxNhnxgV1CWl2yg=</dsig:DigestValue>
       </hash>
     </dependentAssembly>
   </dependency>
-  <file name="FlexAdmin.exe.config" size="186">
+  <file name="FlexAdmin.exe.config" size="184">
     <hash>
       <dsig:Transforms>
         <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
       </dsig:Transforms>
       <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
-      <dsig:DigestValue>1NgAxCSw4ibTXzWVy7D6Rw60Qih4Dn37KvGhG5Ora/s=</dsig:DigestValue>
+      <dsig:DigestValue>FihlZtVNgcNyH37Pf0Jtll3jZOm+L55ijXNjtoS2/mo=</dsig:DigestValue>
     </hash>
   </file>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">

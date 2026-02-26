@@ -19,7 +19,7 @@ using System.CodeDom.Compiler;
 using System.Diagnostics;
 using System.Reflection;
 
-namespace Crayon
+namespace BlackBox
 {
   #region Class AppBuilder
   /// <summary>
@@ -350,7 +350,7 @@ namespace Crayon
         source += "[assembly: AssemblyTrademark(\"\")]\n";
         source += "[assembly: AssemblyCulture(\"\")]\n";
         source += "\n";
-        source += "namespace Crayon\n";
+        source += "namespace BlackBox\n";
         source += "{\n";
         source += "  static class Program\n";
         source += "  {\n";
@@ -726,7 +726,7 @@ namespace Crayon
       //
       try
       {
-        string resname = String.Format("Crayon.{0}", name);
+        string resname = String.Format("BlackBox.{0}", name);
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -757,7 +757,7 @@ namespace Crayon
       //
       try
       {
-        string resname = String.Format("Crayon.{0}.gz", name);       
+        string resname = String.Format("BlackBox.{0}.gz", name);
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -767,7 +767,7 @@ namespace Crayon
         using (Stream gzip = new GZipStream(rs, CompressionMode.Decompress, true))
         {
           string path = Path.Combine(AppBuilder.compilerFolder, name); 
-          path.Replace("Crayon.","");
+          path.Replace("BlackBox.","");
           //
           using (Stream file = File.Create(path))
           {
@@ -796,7 +796,7 @@ namespace Crayon
     public static void AddFileAsEmbeddedResource(string filename, string compilerFolder)
     {
       // Compress input file using System.IO.Compression
-      string resname = String.Format("Crayon.{0}.gz", filename);
+      string resname = String.Format("BlackBox.{0}.gz", filename);
       string respath = Path.Combine(compilerFolder, resname);
       GZipSingleFile(Path.Combine(compilerFolder, filename), respath); 
       //

@@ -6,12 +6,12 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("FlexAdminBeacon")]
+[assembly: AssemblyTitle("FlexAdmin")]
 [assembly: AssemblyDescription("Run the FlexAdmin scripting framework")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Crayon Australia")]
+[assembly: AssemblyCompany("ToyWorlds")]
 [assembly: AssemblyProduct("FlexAdmin")]
-[assembly: AssemblyCopyright("Copyright ©  2019-2020 Crayon Auatralia")]
+[assembly: AssemblyCopyright("Copyright ©  2026 ToyWorlds")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
