@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Copyright (C) 2026 ToyWorlds
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -90,7 +91,7 @@ namespace BlackBox
       string[] nameparts = ass.GetName().Name.ToString().Split('_');      
       AppSettings.appName = nameparts[0]; 
       //
-      AppFiler.ExtractPicture(ass, this.pictureBoxFiler, "crayon");
+      AppFiler.ExtractPicture(ass, this.pictureBoxFiler, "blackbox");
       //
       this.ScriptVersion = AppSettings.appVersion.Replace(".","");
       //

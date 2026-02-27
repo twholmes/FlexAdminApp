@@ -662,10 +662,10 @@ namespace BlackBox
     public static bool UnpackVisualStudio(bool unzip=false)
     {
       // unpack VisualStudio resources
-      bool available1 = UnpackAppSourceResource("VisualStudio.zip");      
+      bool available1 = UnpackAppSourceResource("visualstudio.zip");      
       if (!available1)
       {
-        available1 = UnpackZippedResource("VisualStudio.zip");
+        available1 = UnpackZippedResource("visualstudio.zip");
       } 
       if (available1)
       {
@@ -757,7 +757,7 @@ namespace BlackBox
       //
       try
       {
-        string resname = String.Format("BlackBox.{0}.gz", name);
+        string resname = String.Format("BlackBox.{0}", name);  // .gz
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -796,7 +796,7 @@ namespace BlackBox
     public static void AddFileAsEmbeddedResource(string filename, string compilerFolder)
     {
       // Compress input file using System.IO.Compression
-      string resname = String.Format("BlackBox.{0}.gz", filename);
+      string resname = String.Format("BlackBox.{0}", filename);  // .gz
       string respath = Path.Combine(compilerFolder, resname);
       GZipSingleFile(Path.Combine(compilerFolder, filename), respath); 
       //

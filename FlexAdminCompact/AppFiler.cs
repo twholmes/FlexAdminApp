@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Copyright (C) 2026 ToyWorlds
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -550,12 +551,12 @@ namespace BlackBox
     public static bool UnpackSource()
     {
       // unpack binary resources
-      bool available0 = UnpackAppSourceResource("crayon.png");
+      bool available0 = UnpackAppSourceResource("blackbox.png");
       if (!available0)
       {
-        available0 = UnpackZippedResource("crayon.png");
+        available0 = UnpackZippedResource("blackbox.png");
       }      
-      AppConsole.Write("... crayon.png");
+      AppConsole.Write("... blackbox.png");
       bool available1 = UnpackAppSourceResource("file.png");
       if (!available1)
       {
@@ -803,7 +804,7 @@ namespace BlackBox
       //
       try
       {
-        string resname = String.Format("BlackBox.{0}.gz", name);       
+        string resname = String.Format("BlackBox.{0}", name);       // .gz
         Stream rs = ass.GetManifestResourceStream(resname);
         if (rs == null)
         {
@@ -846,10 +847,10 @@ namespace BlackBox
       else
       {
         // also try for a zipped resource
-        rs = ass.GetManifestResourceStream(String.Format("BlackBox.{0}.png.gz", type));
+        rs = ass.GetManifestResourceStream(String.Format("BlackBox.{0}.png", type));
         if (rs == null)
         {
-          MessageBox.Show(String.Format("Resource BlackBox.{0}.png.gz not found", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+          MessageBox.Show(String.Format("Resource BlackBox.{0}.png not found", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         else          
         {
@@ -858,7 +859,7 @@ namespace BlackBox
             pb.Image = new Bitmap(gzip);      
           else
           {
-            MessageBox.Show(String.Format("Resource BlackBox.{0}.png.gz was not decompressed", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(String.Format("Resource BlackBox.{0}.png was not decompressed", type), ass.GetName().Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
           }
         }
       }

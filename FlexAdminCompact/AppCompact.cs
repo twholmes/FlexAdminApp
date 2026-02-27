@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Copyright (C) 2026 ToyWorlds
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -113,7 +114,7 @@ namespace BlackBox
       }
       // set the run tab picture
       Assembly ass = Assembly.GetExecutingAssembly(); 
-      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "crayon");
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "blackbox");
       //
       this.labelContentStatus.Text = "initial";
       //
@@ -637,7 +638,7 @@ namespace BlackBox
           bCanChange = false;
         else        
         {
-          if (dialog.value != AppSettings.unlockPassword && dialog.value != "crayon") bCanChange = false;
+          if (dialog.value != AppSettings.unlockPassword && dialog.value != "blackbox") bCanChange = false;
         }                 
       }
       // toggle locked
@@ -671,7 +672,7 @@ namespace BlackBox
     {
       Assembly ass = Assembly.GetExecutingAssembly();       
       AppRunner.Context = AppRunner.RunContext.ImplFiles;
-      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "crayon");      
+      AppFiler.ExtractPicture(ass, this.pictureBocBlackBox, "blackbox");      
       this.buttonRun.Text = "RUN";
       this.toolStripMenuItemRunImplFiles.Checked = true;
       this.toolStripMenuItemRunSQL.Checked = false;

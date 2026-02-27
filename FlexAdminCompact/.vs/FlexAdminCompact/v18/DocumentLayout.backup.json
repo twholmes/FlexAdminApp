@@ -3,19 +3,23 @@
   "WorkspaceRootPath": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|d:\\github\\flexadminapp\\flexadmincompact\\appbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:appbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|d:\\github\\flexadminapp\\flexadmincompact\\appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
-      "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+      "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|d:\\github\\flexadminapp\\flexadmincompact\\apprunnerform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:apprunnerform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{00000000-0000-0000-0000-000000000000}|\u003CSolution\u003E|FlexAdminCompact||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\appbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:appbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|solutionrelative:appcompact.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
     },
     {
       "AbsoluteMoniker": "D:0:0:{D60F0005-5025-44B2-A0D5-0BA67315269A}|FlexAdminCompact.csproj|d:\\github\\flexadminapp\\flexadmincompact\\||{B270807C-D8C6-49EB-8EBE-8E8D566637A1}|5e9a8ac2-4f34-4521-858f-4c248ba31532"
@@ -32,7 +36,20 @@
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
+              "Title": "AppRunnerForm.cs",
+              "DocumentMoniker": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppRunnerForm.cs",
+              "RelativeDocumentMoniker": "AppRunnerForm.cs",
+              "ToolTip": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppRunnerForm.cs",
+              "RelativeToolTip": "AppRunnerForm.cs",
+              "ViewState": "AgIAAGIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-27T06:45:57.388Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
               "Title": "AppCompact.cs [Design]",
               "DocumentMoniker": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppCompact.cs",
               "RelativeDocumentMoniker": "AppCompact.cs",
@@ -44,7 +61,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "FlexAdminCompact",
               "DocumentMoniker": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\FlexAdminCompact.csproj",
               "RelativeDocumentMoniker": "FlexAdminCompact.csproj",
@@ -56,26 +73,26 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 0,
               "Title": "AppBuilder.cs",
               "DocumentMoniker": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppBuilder.cs",
               "RelativeDocumentMoniker": "AppBuilder.cs",
               "ToolTip": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppBuilder.cs",
               "RelativeToolTip": "AppBuilder.cs",
-              "ViewState": "AgIAAJsCAAAAAAAAAAAUwNgCAAAwAAAAAAAAAA==",
+              "ViewState": "AgIAAFcCAAAAAAAAAAAAAKUCAAAVAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-02-24T10:08:37.783Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "AppCompact.cs",
               "DocumentMoniker": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppCompact.cs",
               "RelativeDocumentMoniker": "AppCompact.cs",
               "ToolTip": "D:\\GitHub\\FlexAdminApp\\FlexAdminCompact\\AppCompact.cs",
               "RelativeToolTip": "AppCompact.cs",
-              "ViewState": "AgIAAH8BAAAAAAAAAIA8wJABAAAGAAAAAAAAAA==",
+              "ViewState": "AgIAAIEBAAAAAAAAAAAnwJUBAAAIAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-02-23T08:16:05.05Z",
               "EditorCaption": ""
