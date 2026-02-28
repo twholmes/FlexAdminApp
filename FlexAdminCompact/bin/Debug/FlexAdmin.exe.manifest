@@ -42,14 +42,14 @@
     </dependentAssembly>
   </dependency>
   <dependency>
-    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="FlexAdmin.exe" size="1729536">
+    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="FlexAdmin.exe" size="1730048">
       <assemblyIdentity name="FlexAdmin" version="1.0.3.0" language="neutral" processorArchitecture="amd64" />
       <hash>
         <dsig:Transforms>
           <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
         </dsig:Transforms>
         <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
-        <dsig:DigestValue>D6QLF4Q0WcJ8OU28TRlmT9VIxMvpj/8f6FYnLQvWrMQ=</dsig:DigestValue>
+        <dsig:DigestValue>Jn6j8mJnBbPk96/DECKSHlH+0y83ggq9XKP8aHtpxPI=</dsig:DigestValue>
       </hash>
     </dependentAssembly>
   </dependency>

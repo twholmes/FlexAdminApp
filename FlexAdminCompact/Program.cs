@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Reflection;
 
+using System.Runtime.InteropServices;
+
 namespace BlackBox 
 {
   static class Program
@@ -17,10 +19,18 @@ namespace BlackBox
         Assembly ass = Assembly.GetExecutingAssembly();     
         string[] nameparts = ass.GetName().Name.ToString().Split('_');      
         string appname = nameparts[0]; 
-        //      
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new AppCompactForm(appname));
+        //
+        bool isAdmin = AdminCheck.IsCurrentProcessAdmin();
+        if (!isAdmin)
+        {
+          MessageBox.Show("This application must be run as Admin", "FlexAdmin", MessageBoxButtons.OK, MessageBoxIcon.Error);        
+        }
+        else
+        {
+          Application.EnableVisualStyles();
+          Application.SetCompatibleTextRenderingDefault(false);
+          Application.Run(new AppCompactForm(appname));
+        }
       }
       catch (Exception ex)
       {
@@ -75,5 +85,14 @@ namespace BlackBox
     public const string c_ConnectionString = "Data Source=localhost;Initial Catalog=FNMSCompliance;Integrated Security=true";
  
   }  
-  
+
+  static public class AdminCheck
+  {
+   [DllImport("shell32.dll", SetLastError = true)]
+   [return: MarshalAs(UnmanagedType.Bool)]
+   private static extern bool IsUserAnAdmin();
+
+   public static bool IsCurrentProcessAdmin() => IsUserAnAdmin();
+  }
+
 }
